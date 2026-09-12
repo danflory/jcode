@@ -80,6 +80,147 @@ impl ResolvedTokenPricing {
     }
 }
 
+/// Generic per-model pricing fallback ($/1M tokens) used when the unified
+/// resolver cannot price a model (empty/stale models.dev cache, an unknown
+/// openai-compatible provider label, a first run before the background refresh
+/// finishes, etc.).
+///
+/// Rather than billing every unresolved model at one flat rate, this keys off
+/// the model id so the estimate at least reflects the model's broad cost class.
+/// It is a last-resort *estimate* only: the real per-model catalog price
+/// supersedes it as soon as `refresh_cached_pricing` resolves the model, and
+/// the fallback is never latched into the cache in a way that blocks that
+/// resolution.
+///
+/// Each tuple is `(input $/1M, output $/1M, cache-read $/1M)`.
+fn model_aware_fallback_pricing(model: &str) -> (f32, f32, Option<f32>) {
+    let m = model.to_ascii_lowercase();
+
+    // Anthropic / Claude family.
+    if m.contains("claude") || m.contains("anthropic") {
+        return if m.contains("haiku") {
+            (1.0, 5.0, Some(0.1))
+        } else if m.contains("sonnet") {
+            (3.0, 15.0, Some(0.3))
+        } else {
+            // Opus and any unknown Claude tier.
+            (5.0, 25.0, Some(0.5))
+        };
+    }
+
+    // OpenAI / GPT family.
+    if m.contains("gpt") || m.contains("o1") || m.contains("o3") || m.contains("o4") {
+        let (input, output) = if m.contains("mini") || m.contains("nano") {
+            (0.75, 4.5)
+        } else if m.contains("pro") {
+            (30.0, 180.0)
+        } else {
+            (2.5, 15.0)
+        };
+        return (input, output, Some(input * 0.1));
+    }
+
+    // DeepSeek family.
+    if m.contains("deepseek") {
+        // Flash/lightweight tiers are a fraction of the Pro cost.
+        let (input, output) = if m.contains("flash") || m.contains("lite") || m.contains("nano") {
+            (0.06, 0.18)
+        } else if m.contains("r1") {
+            (0.5, 2.15)
+        } else {
+            // V3 / V4 / Pro / generic DeepSeek.
+            (1.3, 2.6)
+        };
+        return (input, output, Some(if m.contains("flash") { 0.015 } else { 0.1 }));
+    }
+
+    // Google / Gemini family.
+    if m.contains("gemini") {
+        return if m.contains("flash") || m.contains("nano") {
+            (0.075, 0.3, Some(0.0075))
+        } else {
+            (1.25, 5.0, Some(0.125))
+        };
+    }
+
+    // Qwen / Alibaba family.
+    if m.contains("qwen") || m.contains("alibaba") {
+        let input = if m.contains("coder") { 0.15 } else { 0.25 };
+        return (input, 1.0, Some(input * 0.2));
+    }
+
+    // GLM / Zhipu family.
+    if m.contains("glm") {
+        return if m.contains("flash") {
+            (0.06, 0.4, Some(0.01))
+        } else {
+            (0.2, 1.0, Some(0.04))
+        };
+    }
+
+    // Llama / Meta family.
+    if m.contains("llama") || m.contains("meta") {
+        let input = if m.contains("405") { 3.0 } else if m.contains("70") { 0.9 } else { 0.15 };
+        return (input, input * 3.0, Some(input * 0.1));
+    }
+
+    // Mistral family.
+    if m.contains("mistral") {
+        return if m.contains("large") {
+            (2.0, 6.0, Some(0.2))
+        } else {
+            (0.15, 0.6, Some(0.015))
+        };
+    }
+
+    // Unknown model: a reasonable default for a mid-range open model rather
+    // than a blanket premium figure. This is the only unconditional fallback
+    // left, and it is far closer to real-world open-model pricing than the old
+    // flat $15/$60 defaults.
+    (0.25, 1.0, Some(0.025))
+}
+
+impl App {
+    /// Assemble the active per-model pricing used to bill a call.
+    ///
+    /// Uses the prices resolved by [`App::refresh_cached_pricing`] when they are
+    /// still valid for the current model; otherwise falls back to a model-aware
+    /// generic estimate. Unlike the historical `get_or_insert(15.0 / 60.0)`
+    /// pattern, this never writes a flat default into the cache, so a later
+    /// successful resolution is never shadowed for the rest of the session.
+    fn effective_resolved_pricing(
+        &self,
+        model: &str,
+        is_anthropic: bool,
+    ) -> ResolvedTokenPricing {
+        // Cached prices are only ever populated by a successful resolution for
+        // the *current* model+service-tier (refresh_cached_pricing clears them
+        // on a model switch or a missed lookup), so presence of a memoized model
+        // plus valid prices is sufficient to reuse them.
+        if self.cost.cached_price_model.is_some()
+            && let (Some(prompt), Some(completion)) = (
+                self.cost.cached_prompt_price,
+                self.cost.cached_completion_price,
+            )
+        {
+            return ResolvedTokenPricing {
+                prompt_price: prompt,
+                completion_price: completion,
+                cache_read_price: self.cost.cached_cache_read_price,
+                is_anthropic,
+            };
+        }
+
+        let (prompt, completion, cache_read) = model_aware_fallback_pricing(model);
+        ResolvedTokenPricing {
+            prompt_price: prompt,
+            completion_price: completion,
+            cache_read_price: cache_read,
+            is_anthropic,
+        }
+    }
+}
+
 fn remote_provider_is_inherently_billed(provider_name: &str) -> bool {
     provider_name.contains("opencode")
         || provider_name.contains("openrouter")
@@ -226,19 +367,10 @@ impl App {
         let model = self.provider.model().to_string();
         self.refresh_cached_pricing(&model, is_anthropic, is_openai);
 
-        // Pricing in $/1M tokens. Anthropic resolves real per-model pricing in
-        // refresh_cached_pricing; other providers fall back to the generic
-        // defaults cached here.
-        let prompt_price = *self.cost.cached_prompt_price.get_or_insert(15.0);
-        let completion_price = *self.cost.cached_completion_price.get_or_insert(60.0);
-        let cache_read_price = self.cost.cached_cache_read_price;
-
-        let pricing = ResolvedTokenPricing {
-            prompt_price,
-            completion_price,
-            cache_read_price,
-            is_anthropic,
-        };
+        // Pricing in $/1M tokens. Uses real per-model prices when resolved;
+        // otherwise a model-aware generic estimate. Never latches a flat
+        // default into the cache.
+        let pricing = self.effective_resolved_pricing(&model, is_anthropic);
 
         let call_cost = pricing.cost_for_usage(
             self.streaming.streaming_input_tokens,
@@ -376,12 +508,7 @@ impl App {
         }
 
         self.refresh_cached_pricing(&model, is_anthropic, is_openai);
-        Some(ResolvedTokenPricing {
-            prompt_price: *self.cost.cached_prompt_price.get_or_insert(15.0),
-            completion_price: *self.cost.cached_completion_price.get_or_insert(60.0),
-            cache_read_price: self.cost.cached_cache_read_price,
-            is_anthropic,
-        })
+        Some(self.effective_resolved_pricing(&model, is_anthropic))
     }
 
     /// Resolve and cache per-model pricing for the active provider. Uses the
@@ -565,7 +692,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::remote_provider_is_inherently_billed;
+    use super::{model_aware_fallback_pricing, remote_provider_is_inherently_billed};
 
     #[test]
     fn remote_billing_recognizes_deepseek_display_name() {
@@ -579,6 +706,46 @@ mod tests {
                 !remote_provider_is_inherently_billed(provider_name),
                 "{provider_name} should not be billed per token"
             );
+        }
+    }
+
+    #[test]
+    fn model_aware_fallback_prices_deepseek_flash_cheaply() {
+        let (input, output, cache_read) =
+            model_aware_fallback_pricing("deepseek-ai/DeepSeek-V4-Flash-0731");
+        assert!(
+            (input - 0.06).abs() < 1e-6 && (output - 0.18).abs() < 1e-6,
+            "DeepSeek Flash fallback should reflect its cheap tier: \
+             input ${input}/1M output ${output}/1M"
+        );
+        assert!(cache_read.is_some());
+    }
+
+    #[test]
+    fn model_aware_fallback_varies_by_model_family() {
+        // A premium model must never be priced at the same rate as a cheap
+        // Flash/lite model - the fallback has to be model-aware, not flat.
+        let (flash_in, _, _) = model_aware_fallback_pricing("deepseek-ai/DeepSeek-V4-Flash");
+        let (pro_in, _, _) = model_aware_fallback_pricing("deepseek-ai/DeepSeek-V4-Pro");
+        let (claude_haiku_in, _, _) = model_aware_fallback_pricing("claude-haiku-4-5");
+        let (claude_opus_in, _, _) = model_aware_fallback_pricing("claude-opus-4-7");
+        assert!(pro_in > flash_in, "Pro must cost more than Flash");
+        assert!(claude_opus_in > claude_haiku_in, "Opus must cost more than Haiku");
+    }
+
+    #[test]
+    fn model_aware_fallback_always_returns_positive_finite_prices() {
+        for model in [
+            "gpt-5.4-mini",
+            "qwen3-coder-480b",
+            "glm-5.3-flash",
+            "mistral-large-2411",
+            "meta-llama/Llama-3.1-70B",
+            "some-totally-unknown-model-xyz",
+        ] {
+            let (input, output, _) = model_aware_fallback_pricing(model);
+            assert!(input.is_finite() && input > 0.0, "{model}: bad input {input}");
+            assert!(output.is_finite() && output > 0.0, "{model}: bad output {output}");
         }
     }
 }
