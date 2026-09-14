@@ -3605,6 +3605,11 @@ impl App {
     /// Reset provider-reported usage that belongs to a transcript being fully
     /// discarded. Render-only resets intentionally preserve these counters,
     /// so full session clears must call this separately.
+    ///
+    /// This also zeroes the accumulated cost and token accounting. A fresh
+    /// session carries no history totals to re-seed from, so without this the
+    /// info widget kept showing the discarded session's spend after `/clear`
+    /// (the streaming counters alone were never enough).
     pub(super) fn clear_live_usage_state(&mut self) {
         self.streaming.streaming_input_tokens = 0;
         self.streaming.streaming_output_tokens = 0;
@@ -3613,6 +3618,23 @@ impl App {
         self.streaming.streaming_context_stale = false;
         self.streaming.streaming_usage_call_reset_pending = false;
         self.kv_cache.current_api_usage_recorded = false;
+        // Session-wide cost/usage accumulation is part of the discarded
+        // transcript: `/clear` must start the new session at $0 and zero
+        // tokens, not carry the previous session's lifetime totals.
+        self.cost.total_cost = 0.0;
+        self.remote_total_tokens = None;
+        self.remote_token_usage_totals = None;
+        self.token_accounting.total_input_tokens = 0;
+        self.token_accounting.total_output_tokens = 0;
+        self.token_accounting.total_cache_reported_input_tokens = 0;
+        self.token_accounting.total_cache_read_tokens = 0;
+        self.token_accounting.total_cache_creation_tokens = 0;
+        self.token_accounting.total_cache_optimal_input_tokens = 0;
+        self.token_accounting.last_cache_reported_input_tokens = None;
+        self.token_accounting.last_cache_read_tokens = None;
+        self.token_accounting.last_cache_creation_tokens = None;
+        self.token_accounting.last_cache_optimal_input_tokens = None;
+        self.token_accounting.cache_next_optimal_input_tokens = None;
     }
 
     /// Discard all client-side render state for the current streaming attempt:

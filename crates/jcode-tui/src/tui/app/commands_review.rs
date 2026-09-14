@@ -1106,3 +1106,7 @@ pub(super) enum RefactorCommand {
 #[cfg(test)]
 #[path = "tests/issue_605_clear_side_panel.rs"]
 mod issue_605_clear_side_panel_tests;
+
+#[cfg(test)]
+#[path = "tests/clear_zeroes_cost_accounting.rs"]
+mod clear_zeroes_cost_accounting_tests;
