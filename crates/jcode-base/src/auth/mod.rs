@@ -1100,6 +1100,25 @@ fn probe_anthropic_status(status: &mut AuthStatus) {
 fn probe_openrouter_status(status: &mut AuthStatus) {
     if crate::provider::openrouter::has_openrouter_credentials() {
         status.openrouter = AuthState::Available;
+        return;
+    }
+    // OpenAI-compatible catalog profiles (deepinfra, groq, chutes, ...) share
+    // the OpenRouter/OpenAI-compatible slot via runtime env overrides, so the
+    // strict `has_openrouter_credentials` feature check above refuses their
+    // keys when the API base is not openrouter.ai. A profile with a configured
+    // API key is just as credential-backed as OpenRouter itself: counting it
+    // here keeps first-run onboarding from treating a fully working
+    // API-provider install as credential-less and showing the login splash on
+    // every TUI launch.
+    if crate::provider_catalog::openai_compatible_profiles()
+        .iter()
+        .copied()
+        .find(|&profile| {
+            crate::provider_catalog::openai_compatible_profile_is_configured(profile)
+        })
+        .is_some()
+    {
+        status.openrouter = AuthState::Available;
     }
 }
 
