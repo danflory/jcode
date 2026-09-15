@@ -1,0 +1,15 @@
+{
+  "version": "0.85.0",
+  "date": "2026-09-15",
+  "title": "Cost accounting fixes and deepinfra service tier",
+  "highlights": [
+    "/clear now zeroes cost and token accounting instead of carrying stale totals",
+    "Unresolved model pricing falls back in a model-aware way instead of mispricing usage"
+  ],
+  "improvements": [
+    "OpenRouter runtime routes pass a configured service tier through to deepinfra requests instead of omitting the field"
+  ],
+  "fixes": [
+    "Restored workspace test compilation after upstream ModelRoute gained a usage field"
+  ]
+}
