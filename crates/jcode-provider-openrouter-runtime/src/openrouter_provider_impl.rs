@@ -195,6 +195,23 @@ impl Provider for OpenRouterProvider {
             }
         }
 
+        // Service tier passthrough for OpenAI-compatible gateways (deepinfra,
+        // openai-compatible profiles). Reads the same config key the OpenAI
+        // provider path honors so tier intent follows the model across
+        // providers; deepinfra bills priority vs flex at different rates.
+        let service_tier_override = jcode_base::config::config()
+            .provider
+            .openai_service_tier
+            .as_deref()
+            .map(str::trim);
+        // Map down to the tiers the compat endpoint actually accepts.
+        if let Some(tier) = service_tier_override {
+            // Compat gateways expect "standard" | "flex" | "priority".
+            if !tier.is_empty() && tier != "off" && tier != "standard" && tier != "auto" {
+                request["service_tier"] = serde_json::json!(tier);
+            }
+        }
+
         // Optional thinking override for OpenRouter (provider-specific).
         // Skip for strict OpenAI-schema endpoints (e.g. Mistral) which reject
         // the non-standard top-level `thinking` field with a 422 (issue #261).
