@@ -634,6 +634,124 @@ fn direct_deepseek_profile_omits_image_url_parts() {
     );
 }
 
+/// SPR-0004 regression: an env-file `extra_body` service_tier must never
+/// override the configured `[provider].openai_service_tier`.
+///
+/// The real-world defect: `~/.config/jcode/deepinfra.env` carried
+/// `JCODE_OPENAI_EXTRA_BODY={"service_tier":"flex"}`, which was merged into the
+/// body AFTER the config eviction, so a configured `standard` still went out as
+/// flex. The service_tier decision is now applied last and must win.
+#[test]
+fn extra_body_service_tier_cannot_override_configured_standard() {
+    let _lock = ENV_LOCK.lock();
+    let _tier = EnvVarGuard::set("JCODE_OPENAI_SERVICE_TIER", "standard");
+    jcode_base::config::invalidate_config_cache();
+    let (api_base, request_rx) = spawn_single_response_chat_server();
+
+    let mut extra = serde_json::Map::new();
+    extra.insert("service_tier".to_string(), serde_json::json!("flex"));
+    let provider = OpenRouterProvider {
+        api_base,
+        profile_id: Some("deepseek".to_string()),
+        supports_provider_features: false,
+        supports_model_catalog: false,
+        extra_body: Some(extra),
+        ..make_custom_compatible_provider()
+    };
+
+    let messages = vec![Message {
+        role: Role::User,
+        content: vec![ContentBlock::Text {
+            text: "hello".to_string(),
+            cache_control: None,
+        }],
+        timestamp: None,
+        tool_duration_ms: None,
+    }];
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    rt.block_on(async {
+        let mut stream = provider
+            .complete(&messages, &[], "", None)
+            .await
+            .expect("fake chat request should start");
+        while let Some(event) = stream.next().await {
+            if event.is_err() {
+                break;
+            }
+        }
+    });
+
+    let request = request_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("capture fake provider request");
+    let body = parse_captured_request_body(&request);
+    assert!(
+        body.get("service_tier").is_none(),
+        "configured standard must omit service_tier even when extra_body injects flex: {body}"
+    );
+}
+
+/// SPR-0004 regression (companion): an explicit `priority` config still wins
+/// over an env-file `extra_body` flex injection.
+#[test]
+fn extra_body_service_tier_cannot_override_configured_priority() {
+    let _lock = ENV_LOCK.lock();
+    let _tier = EnvVarGuard::set("JCODE_OPENAI_SERVICE_TIER", "priority");
+    jcode_base::config::invalidate_config_cache();
+    let (api_base, request_rx) = spawn_single_response_chat_server();
+
+    let mut extra = serde_json::Map::new();
+    extra.insert("service_tier".to_string(), serde_json::json!("flex"));
+    let provider = OpenRouterProvider {
+        api_base,
+        profile_id: Some("deepseek".to_string()),
+        supports_provider_features: false,
+        supports_model_catalog: false,
+        extra_body: Some(extra),
+        ..make_custom_compatible_provider()
+    };
+
+    let messages = vec![Message {
+        role: Role::User,
+        content: vec![ContentBlock::Text {
+            text: "hello".to_string(),
+            cache_control: None,
+        }],
+        timestamp: None,
+        tool_duration_ms: None,
+    }];
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    rt.block_on(async {
+        let mut stream = provider
+            .complete(&messages, &[], "", None)
+            .await
+            .expect("fake chat request should start");
+        while let Some(event) = stream.next().await {
+            if event.is_err() {
+                break;
+            }
+        }
+    });
+
+    let request = request_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("capture fake provider request");
+    let body = parse_captured_request_body(&request);
+    assert_eq!(
+        body.get("service_tier").and_then(|value| value.as_str()),
+        Some("priority"),
+        "configured priority must win over extra_body flex: {body}"
+    );
+}
+
 /// Extract the JSON request body from a captured raw HTTP request.
 fn parse_captured_request_body(request: &str) -> serde_json::Value {
     let body = request

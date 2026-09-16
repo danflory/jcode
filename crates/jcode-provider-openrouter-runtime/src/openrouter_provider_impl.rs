@@ -195,56 +195,6 @@ impl Provider for OpenRouterProvider {
             }
         }
 
-        // Service tier passthrough for OpenAI-compatible gateways (deepinfra,
-        // openai-compatible profiles). Reads the same config key the OpenAI
-        // provider path honors so tier intent follows the model across
-        // providers; deepinfra bills priority vs flex at different rates.
-        let service_tier_override = jcode_base::config::config()
-            .provider
-            .openai_service_tier
-            .as_deref()
-            .map(str::trim);
-        // Map down to the tiers the compat endpoint actually accepts. DeepInfra
-        // documents exactly two requestable tiers on tagged models: "priority"
-        // (1.5x billing) and "flex" (0.8x billing, may queue up to 10 minutes).
-        // Omitting the field means standard real-time scheduling (1x); sending
-        // "standard"/"auto" is not documented, so those collapse to omission.
-        if let Some(tier) = service_tier_override {
-            match tier {
-                "flex" | "priority" => {
-                    request["service_tier"] = serde_json::json!(tier);
-                    jcode_base::logging::info(&format!(
-                        "Service tier: sending service_tier=\"{}\" in request body",
-                        tier
-                    ));
-                }
-                "" | "off" | "standard" | "auto" | "none" => {
-                    // Force out any pre-existing tier so standard truly means
-                    // "omit the field". A stale "flex"/"priority" injected by an
-                    // earlier layer (e.g. a fast-mode default) must never survive
-                    // into the wire body when the configured tier is standard.
-                    request.as_object_mut().map(|obj| obj.remove("service_tier"));
-                    jcode_base::logging::info(
-                        "Service tier: standard (field omitted from request body)",
-                    );
-                }
-                other => {
-                    // Unknown value: still send it verbatim so the gateway,
-                    // not jcode, decides whether it is valid.
-                    request["service_tier"] = serde_json::json!(other);
-                    jcode_base::logging::warn(&format!(
-                        "Service tier: sending unrecognized value \"{}\" verbatim; gateway may reject or fall back to standard",
-                        other
-                    ));
-                }
-            }
-        } else {
-            // No tier configured: standard/omit. Same stale-tier eviction as
-            // the explicit "standard" arm above.
-            request.as_object_mut().map(|obj| obj.remove("service_tier"));
-            jcode_base::logging::info("Service tier: standard (field omitted from request body)");
-        }
-
         // Optional thinking override for OpenRouter (provider-specific).
         // Skip for strict OpenAI-schema endpoints (e.g. Mistral) which reject
         // the non-standard top-level `thinking` field with a 422 (issue #261).
@@ -308,6 +258,71 @@ impl Provider for OpenRouterProvider {
             for (key, value) in extra {
                 request_obj.insert(key.clone(), value.clone());
             }
+        }
+
+        // Service tier passthrough for OpenAI-compatible gateways (deepinfra,
+        // openai-compatible profiles).
+        //
+        // Source of truth: `~/.jcode/config.toml`, `[provider] openai_service_tier`
+        // ("flex" | "priority" | standard/off/auto/none/empty = omit the field).
+        // `JCODE_OPENAI_SERVICE_TIER` overrides it. The TUI `/fast on|off` writes
+        // the same config key.
+        //
+        // Do NOT let env files silently override this: `~/.config/jcode/<profile>.env`
+        // can inject `JCODE_OPENAI_EXTRA_BODY={"service_tier":"flex"}`, which is
+        // merged into the body by the `extra_body` block above. That is exactly the
+        // SPR-0004 bug: a stale flex from that env file beat the configured
+        // standard. Applied LAST — after the extra_body merge — so the configured
+        // tier always wins.
+        //
+        // Reads the same config key the OpenAI provider path honors so tier
+        // intent follows the model across providers; deepinfra bills priority
+        // vs flex at different rates.
+        let service_tier_override = jcode_base::config::config()
+            .provider
+            .openai_service_tier
+            .as_deref()
+            .map(str::trim);
+        // Map down to the tiers the compat endpoint actually accepts. DeepInfra
+        // documents exactly two requestable tiers on tagged models: "priority"
+        // (1.5x billing) and "flex" (0.8x billing, may queue up to 10 minutes).
+        // Omitting the field means standard real-time scheduling (1x); sending
+        // "standard"/"auto" is not documented, so those collapse to omission.
+        if let Some(tier) = service_tier_override {
+            match tier {
+                "flex" | "priority" => {
+                    request["service_tier"] = serde_json::json!(tier);
+                    jcode_base::logging::info(&format!(
+                        "Service tier: sending service_tier=\"{}\" in request body",
+                        tier
+                    ));
+                }
+                "" | "off" | "standard" | "auto" | "none" => {
+                    // Force out any pre-existing tier so standard truly means
+                    // "omit the field". A stale "flex"/"priority" injected by an
+                    // earlier layer (e.g. a fast-mode default or env extra_body)
+                    // must never survive into the wire body when the configured
+                    // tier is standard.
+                    request.as_object_mut().map(|obj| obj.remove("service_tier"));
+                    jcode_base::logging::info(
+                        "Service tier: standard (field omitted from request body)",
+                    );
+                }
+                other => {
+                    // Unknown value: still send it verbatim so the gateway,
+                    // not jcode, decides whether it is valid.
+                    request["service_tier"] = serde_json::json!(other);
+                    jcode_base::logging::warn(&format!(
+                        "Service tier: sending unrecognized value \"{}\" verbatim; gateway may reject or fall back to standard",
+                        other
+                    ));
+                }
+            }
+        } else {
+            // No tier configured: standard/omit. Same stale-tier eviction as
+            // the explicit "standard" arm above.
+            request.as_object_mut().map(|obj| obj.remove("service_tier"));
+            jcode_base::logging::info("Service tier: standard (field omitted from request body)");
         }
 
         let message_items = request

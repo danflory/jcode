@@ -4,6 +4,19 @@
 **Rule (operator):** every change is logged, committed, and carries an undo
 procedure in this file before/with the change.
 
+## Requirement (operator, 2026-09-16)
+
+**Standard tier is mandatory. Flex must never be sent.**
+
+Flex was enabled on 2026-09-14 as a cost-saving measure (~$50/month). It failed in
+practice: DeepInfra's flex tier is best-effort and may queue for up to 10 minutes
+before running (or reject with HTTP 429 `engine_overloaded`), so the server would
+not reply in acceptable time. The whole of this SPR exists to get the wire back to
+standard — the original framing as a "config not taking effect" bug understates it.
+
+**Acceptance criterion:** every deepinfra request goes out with NO `service_tier`
+field (standard), regardless of any env or config override.
+
 ## Defect (verified, empirical)
 
 The outbound request body to `https://api.deepinfra.com/v1/openai` always carries
@@ -201,6 +214,28 @@ It was not found for a long time because:
 **Lesson:** for provider-request behavior, check the resolved env files
 (`app_config_dir()/ <provider>.env`) alongside config.toml; env `extra_body`
 overrides the config tier because it merges after the eviction block.
+
+### C9. Strip stale flex comment from deepinfra.env
+- **What:** removed the 4 comment lines describing the (now deleted) flex line and
+  the false claim that the runtime does not read `[provider].openai_service_tier`.
+  File now contains only `DEEPINFRA_API_KEY`.
+- **Backup:** `~/.config/jcode/deepinfra.env.pre-comment-strip`.
+- **Undo:** `cp ~/.config/jcode/deepinfra.env.pre-comment-strip ~/.config/jcode/deepinfra.env`.
+
+### C10. Code hardening: tier decision applied LAST + config-file comment
+- **What:** in `openrouter_provider_impl.rs` `build_request`, the `service_tier`
+  block now runs AFTER the `extra_body` merge so the configured tier always wins
+  over an env-file `extra_body` injection. Added a comment naming the source of
+  truth (`~/.jcode/config.toml [provider] openai_service_tier`,
+  `JCODE_OPENAI_SERVICE_TIER`, `/fast on|off`) and warning about
+  `~/.config/jcode/<profile>.env` `JCODE_OPENAI_EXTRA_BODY`.
+- **Regression tests:** `extra_body_service_tier_cannot_override_configured_standard`
+  and `..._priority` in `openrouter_tests.rs`. Fail-first proven: with the old
+  order (merge after tier block) both fail with `service_tier:"flex"`; with the fix
+  both pass. Full crate suite: 136 passed, 0 failed.
+- **Commit:** next commit.
+- **Undo:** `git revert <commit>`; behaviourally, move the service_tier block back
+  before the `extra_body` merge.
 
 ## TEST PROCEDURE TIMING (local EDT, 2026-09-15)
 
