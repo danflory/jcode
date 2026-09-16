@@ -237,6 +237,27 @@ overrides the config tier because it merges after the eviction block.
 - **Undo:** `git revert <commit>`; behaviourally, move the service_tier block back
   before the `extra_body` merge.
 
+### C11. Install hardened binary + production restart + final verification
+- **What:** built `--release` from `4804febd9`, installed to
+  `~/.jcode/builds/versions/4804febd9-dirty`, updated stable/current symlinks and
+  the launcher, restarted `jcode --provider auto serve` (new PID 2705710).
+- **Verification:** production log shows `Service tier: standard (field omitted from
+  request body)` and `REQUEST SERVICE_TIER: omitted (standard)` on live deepinfra
+  calls.
+- **Undo:** reinstall a prior version dir and restart the server.
+- **Cleanup:** temp debug artifacts removed (`/tmp/jcode-debug*`,
+  `/tmp/restart-server*.out`, code backup used for the fail-first probe).
+
+### Final state
+- Config: `~/.jcode/config.toml` line 121 = `openai_service_tier = "standard"`.
+- Env: `~/.config/jcode/deepinfra.env` = API key only (no extra_body, no stale comment).
+- Code: tier decision applied last in `build_request` (commit `4804febd9`), 2
+  regression tests, 136 crate tests passing.
+- Production: serving standard, verified on the wire.
+- Backups kept: `deepinfra.env.pre-standard-20260915`,
+  `deepinfra.env.pre-comment-strip`, `deepinfra.env.probe-backup`,
+  `deepinfra.env.bak-20260915`, `~/.jcode/config.toml.bak-priority-test`.
+
 ## TEST PROCEDURE TIMING (local EDT, 2026-09-15)
 
 | Time (EDT) | Elapsed | Step |
