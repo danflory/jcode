@@ -320,6 +320,15 @@ impl Provider for OpenRouterProvider {
             }
         }
 
+        // TEMP DEBUG SPR-0004 BISECT: what is in request.service_tier after extra_body merge?
+        eprintln!(
+            "SPR0004DBG after_extra_body_merge service_tier={:?}",
+            request
+                .get("service_tier")
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "ABSENT".to_string())
+        );
+
         let message_items = request
             .get("messages")
             .and_then(|value| value.as_array())

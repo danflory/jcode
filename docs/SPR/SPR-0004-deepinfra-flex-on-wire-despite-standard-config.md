@@ -132,6 +132,42 @@ or the `extra_body` merge (~305–311). This is the narrow band to search.
 - **Undo** (when done): remove the added debug line / restore the gated block, per
   the matching temp-debug convention.
 
+## ROOT CAUSE FOUND (P2, 2026-09-15 ~23:29Z)
+
+**Location:** `~/.config/jcode/deepinfra.env` line 6:
+```
+JCODE_OPENAI_EXTRA_BODY={"service_tier":"flex"}
+```
+
+The env file also contains a comment: "NOT read [provider].openai_service_tier.
+This env var is the supported way to inject it; verified accepted by the API
+(response echoes service_tier=flex)." A prior session (stallion/whale era) wrote
+this, with a probe backup at `~/.config/jcode/deepinfra.env.probe-backup`.
+
+**Mechanism (verified end-to-end):**
+1. `build_request` service_tier block reads config `standard` → evicts tier → logs
+   "standard (omitted)" → request has no `service_tier` (matches
+   `SPR0004DBG after_service_tier_block = ABSENT`).
+2. The `extra_body` merge (after the eviction) merges
+   `JCODE_OPENAI_EXTRA_BODY={"service_tier":"flex"}` from the env file into every
+   request body → `service_tier: "flex"` reappears (matches
+   `SPR0004DBG after_extra_body_merge = "flex"`).
+3. Wire sends flex regardless of config; the config-toggle experiment earlier was
+   doomed because this unconditional override wins after eviction.
+
+**Fix options (one fix, pick with operator):**
+- Want standard: delete the `JCODE_OPENAI_EXTRA_BODY` line from
+  `~/.config/jcode/deepinfra.env`.
+- Want priority: change line to `JCODE_OPENAI_EXTRA_BODY={"service_tier":"priority"}`.
+
+**Undo for any fix:** the `deepinfra.env.probe-backup` contains the original flex
+line; `deepinfra.env.bak-20260915` holds the pre-probe state.
+
+### C7. Log P2 root cause
+- **What:** recorded this root-cause finding in SPR-0004.
+- **Commit:** next commit.
+- **Undo:** N/A (report-only).
+
 ## TEST PROCEDURE TIMING (local EDT, 2026-09-15)
 
 | Time (EDT) | Elapsed | Step |
