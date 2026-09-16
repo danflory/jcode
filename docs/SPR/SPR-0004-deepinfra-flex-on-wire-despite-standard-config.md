@@ -101,10 +101,68 @@ Expected outcomes:
 - If either `SPR0004DBG` line = `"flex"` already: the eviction is not running in
   this binary → narrow to a stale/incomplete build or a different request path.
 
+## PROBE RESULT P1 (2026-09-15 ~23:14Z) — flex injected INSIDE build_request
+
+Drove one request through the isolated debug server (PID 2632298,
+`jcode run --socket /tmp/jcode-debug.sock -p deepinfra -m deepseek-ai/DeepSeek-V4-Flash-0731`).
+Debug output (server stderr):
+
+```
+SPR0004DBG after_service_tier_block service_tier="ABSENT"
+SPR0004DBG end_build_request  service_tier="\"flex\""
+```
+
+- Right after the service_tier eviction block: `service_tier` is **ABSENT** (the
+  standard→omit eviction worked).
+- At end of `build_request`: the **same** `request` object now carries `flex`.
+
+**Conclusion:** flex is introduced inside `build_request`, in the lines between the
+service_tier block (246) and the end of the function (~370): candidates are the
+`thinking` override (~248), the provider-routing `request["provider"]` block (~260),
+or the `extra_body` merge (~305–311). This is the narrow band to search.
+
+### C5. Log probe result P1
+- **What:** recorded this finding and the one-shot run command used.
+- **Commit:** next commit.
+- **Undo:** N/A (log entry).
+
+### C6. (pending) Narrow to exact injection among thinking/provider/extra_body
+- Planned: add a `SPR0004DBG` line before the extra_body merge, or temporarily gate
+  each candidate block, and re-run the same one-shot request.
+- **Undo** (when done): remove the added debug line / restore the gated block, per
+  the matching temp-debug convention.
+
+## TEST PROCEDURE TIMING (local EDT, 2026-09-15)
+
+| Time (EDT) | Elapsed | Step |
+|---|---|---|
+| 02:53:37 | 0:00 | Operator: toggle tier to test |
+| 02:54:18 | 0:41 | Config standard→priority toggle test; restored to standard |
+| 02:59:11 | ~5:53 | Created SPR-0004 debugging file |
+| 03:05:01 | +0:10 | Added debug line 1 (after service_tier block) |
+| 03:05:09 | +0:08 | Added debug line 2 (end of build_request) |
+| 03:05:13→03:06:14 | 1:01 | cargo build -p openrouter-runtime (compile check) |
+| 03:06:25→03:06:43 | 0:18 | cargo build --release --bin jcode |
+| 03:07:12 | — | Install failed: "Text file busy" (server holds old binary) |
+| 03:09:51 | 2:39 | 2nd server attempt; failed on shared runtime dir |
+| 03:10:19 | 0:28 | Launched isolated 2nd server (PID 2632298) |
+| 03:13:42 | 3:23 | Committed a30fc06b3 (report + debug lines) |
+| 03:14:33 | 0:51 | Probe P1: one-shot jcode run through debug server |
+| 03:15:16 | 0:43 | Logging P1 result to SPR-0004 |
+
+**Total to ~03:15:16: ~21.7 min.** Over the 10-min budget, but the debug-line +
+isolated-server approach (not a full unit test) produced the decisive P1 narrowing:
+flex is injected inside build_request between the eviction block and end of function
+(lines 247–370). A full unit-test-only approach would not have surfaced this as
+directly at this stage.
+
 ## REVERT GUARD (current state)
 
 - Config: `~/.jcode/config.toml` line 121 = `"standard"` (restored; backup
-  `~/.jcode/config.toml.bak-priority-test` exists but is a pre-test backup and can
-  be removed after this SPR closes).
+  `~/.jcode/config.toml.bak-priority-test` exists as a pre-test backup; safe to
+  remove once this SPR closes).
 - Production server PID 2584151: unchanged, still the old locked binary.
-- Debug server PID 2632298: running; kill + remove temp dirs per C4 undo.
+- Debug server PID 2632298: running; undo = `kill 2632298` then
+  `rm -rf /tmp/jcode-debug-runtime /tmp/jcode-debug-data /tmp/jcode-debug.sock`.
+- Current source: debug lines + report committed as `a30fc06b3`, plus this
+  P1 finding (next commit).
