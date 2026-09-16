@@ -372,6 +372,22 @@ impl Session {
     }
 
     pub fn save(&mut self) -> Result<()> {
+        self.save_inner(false)
+    }
+
+    /// Persist immediately, even when this session has no visible conversation
+    /// messages or other explicit persistence markers yet.
+    ///
+    /// Used by callers that create a session in one process and hand it off to
+    /// a separate client process for resume (e.g. visible swarm spawns). The
+    /// resuming client resolves the session id against the on-disk store before
+    /// it can attach, so an in-memory-only session is indistinguishable from a
+    /// missing one ("No session found matching ...").
+    pub fn save_forced(&mut self) -> Result<()> {
+        self.save_inner(true)
+    }
+
+    fn save_inner(&mut self, force: bool) -> Result<()> {
         self.updated_at = Utc::now();
         let path = session_path(&self.id)?;
         let journal_path = session_journal_path_from_snapshot(&path);
@@ -387,7 +403,8 @@ impl Session {
         // id find no file and silently treat the session as missing.
         // Parent linkage is also explicit state: an empty fork carries only a
         // hidden fork notice but must be loadable when its new client attaches.
-        if !self.persist_state.snapshot_exists
+        if !force
+            && !self.persist_state.snapshot_exists
             && !self
                 .messages
                 .iter()
@@ -687,5 +704,35 @@ mod tests {
         );
         assert_eq!(std::fs::read(&snapshot_path).unwrap(), original);
         assert!(pre_wipe_backups(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn plain_save_skips_empty_session_but_save_forced_writes_snapshot() {
+        let _guard = crate::storage::lock_test_env();
+        let temp_home = tempfile::TempDir::new().unwrap();
+        crate::env::set_var("JCODE_HOME", temp_home.path());
+
+        let mut session = Session::create(None, None);
+        let id = session.id.clone();
+
+        // A brand-new empty session must not create a transcript on disk.
+        session.save().unwrap();
+        assert!(
+            !crate::session::session_exists(&id),
+            "plain save must skip an empty session"
+        );
+
+        // ...but a caller that explicitly needs the session resumable by id
+        // (e.g. a visible swarm spawn handed off to a new terminal) must be
+        // able to force the snapshot.
+        session.save_forced().unwrap();
+        assert!(
+            crate::session::session_exists(&id),
+            "forced save must write the snapshot even for an empty session"
+        );
+        let restored = Session::load(&id).expect("forced-saved session should load");
+        assert_eq!(restored.id, id);
+
+        crate::env::remove_var("JCODE_HOME");
     }
 }

@@ -361,6 +361,41 @@ fn prepare_visible_spawn_session_cleans_session_when_launch_errors() {
 }
 
 #[test]
+fn prepare_visible_spawn_session_persists_session_snapshot_for_resume() {
+    // A bare visible spawn (no model, effort, or startup message) must still
+    // write a session snapshot to disk. The spawned terminal resumes the
+    // session by id against the on-disk store, so an in-memory-only session
+    // surfaces as "No session found matching ..." before the client ever
+    // reaches the server.
+    let _guard = crate::storage::lock_test_env();
+    let temp_home = tempfile::TempDir::new().expect("temp home");
+    crate::env::set_var("JCODE_HOME", temp_home.path());
+
+    let worktree = tempfile::TempDir::new().expect("temp worktree");
+    let (session_id, launched) = prepare_visible_spawn_session(
+        Some(worktree.path().to_str().expect("utf8 worktree path")),
+        None,
+        None,
+        None,
+        None,
+        false,
+        None,
+        |_session_id, _cwd: &std::path::Path, _selfdev, _provider_key| Ok(true),
+    )
+    .expect("visible spawn preparation should succeed");
+
+    assert!(launched);
+    let session = crate::session::Session::load(&session_id).expect("prepared session should save");
+    assert_eq!(
+        session.working_dir.as_deref(),
+        Some(worktree.path().to_str().expect("utf8 worktree path")),
+        "prepared session should carry the requested working dir"
+    );
+
+    crate::env::remove_var("JCODE_HOME");
+}
+
+#[test]
 fn prepare_visible_spawn_session_persists_and_launches_provider_key_for_openrouter_model() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("temp home");

@@ -99,7 +99,12 @@ fn create_visible_spawn_session(
     if selfdev_requested {
         session.set_canary("self-dev");
     }
-    session.save()?;
+    // This session is handed off to a separate client process that resumes it
+    // by id against the on-disk store. A plain `save()` skips brand-new empty
+    // sessions (no visible message / title / parent yet), which would make the
+    // resuming client report "No session found matching ..." before it ever
+    // reaches the server. Force the snapshot so the headed window can attach.
+    session.save_forced()?;
 
     Ok((session.id.clone(), cwd))
 }
