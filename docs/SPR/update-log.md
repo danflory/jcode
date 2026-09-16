@@ -1,0 +1,16 @@
+# Update Log
+
+Tracks pulls from origin for this workspace.
+
+| Date (local) | Origin HEAD at pull | Latest origin commit | Note |
+|---|---|---|---|
+| 2026-09-15 | 74e7a4be5 | 74e7a4be5 2026-09-15T03:32:50+00:00 docs: update weekly stars chart | Fetched; local master still 2 ahead / 45 behind (diverged). Not yet merged. |
+| 2026-09-15 | 74e7a4be5 | (same) | Merged origin/master into local master (merge commit 251aa7015). No conflicts. Local 2 commits preserved unpushed. |
+| 2026-09-15 ~21:32Z | — | — | Started pre-release verification `cargo test -p jcode-tui --lib` (task 570185h4gp). Next steps queued: on green, bump version to 0.85.0, commit `chore(release): prepare v0.85.0`, tag v0.85.0. Holding for test completion. |
+| 2026-09-15 ~23:03Z | — | — | Wedged test task 570185h4gp cancelled (no output in 84 min, output file missing). Fresh `cargo test` run found lib-test compile break: `ModelRoute.usage` added upstream by ff329733f without updating test initializers. Same break confirmed on clean origin/master. Fixed locally (5db3f3790). |
+| 2026-09-15 ~23:40Z | — | — | Full test verification: 8 lib failures + 21 workspace-crate failures are identical on clean origin/master (env-dependent, pre-existing). Local commits add zero regressions. service_tier passthrough committed (36e00ba20). |
+| 2026-09-15 ~23:43Z | — | — | `chore(release): prepare v0.85.0` (51eb6d8e2): Cargo.toml 0.84.0→0.85.0, Cargo.lock, changelog/v0.85.0.json. Tag v0.85.0 created locally. Push attempt failed: danflory has no write access to 1jehuang/jcode (403, push: false, no fork). Release deferred permanently: workspace declared personal no-push (poisoned push URL NO_PUSH_PERSONAL + unconditional pre-push hook). |
+| 2026-09-16 ~00:04Z | — | — | Built and installed local binary via `scripts/install_release.sh --fast`: v0.85.0-dev (51eb6d8e2, dirty) → ~/.jcode/builds, launcher → ~/.local/bin/jcode. |
+| 2026-09-16 ~00:33Z | — | — | Research + implementation: DeepInfra service tier visibility (SPR-0003). Restrict passthrough to flex/priority, log exact outgoing tier per request, parse response service_tier echo, surface via ServiceTier stream event → ServerEvent → TUI `Tier:` row. Verified: workspace check clean, runtime tests 134 passed, message-types/openrouter tests green. Commit ad2c923f5. |
+| 2026-09-16 ~01:01Z | — | — | Rebuilt and reinstalled: v0.85.1-dev (ad2c923f5, dirty) live in ~/.local/bin/jcode. |
+| 2026-09-16 ~00:20Z | — | — | SPR-0004 opened and closed: DeepInfra wire tier stuck at flex despite config standard. Root cause: `JCODE_OPENAI_EXTRA_BODY={"service_tier":"flex"}` in `~/.config/jcode/deepinfra.env` (added 2026-09-14 20:19 EDT), merged after the config eviction. Fix: line removed (backup `deepinfra.env.pre-standard-20260915`), stale comment stripped (backup `.pre-comment-strip`), code hardened so the tier decision applies LAST (commit 4804febd9) with 2 fail-first regression tests (136 passed). Binary 4804febd9-dirty installed; production server restarted and verified `REQUEST SERVICE_TIER: omitted (standard)`. |
