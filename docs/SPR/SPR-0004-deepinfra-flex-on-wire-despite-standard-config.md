@@ -1,6 +1,6 @@
 # SPR-0004: DeepInfra wire tier stays "flex" regardless of openai_service_tier config
 
-**Status:** OPEN — instrumented; probe server running; awaiting request capture.
+**Status:** CLOSED — root cause found, fix applied, production verified (2026-09-15 ~23:36Z).
 **Rule (operator):** every change is logged, committed, and carries an undo
 procedure in this file before/with the change.
 
