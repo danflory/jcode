@@ -178,6 +178,17 @@ async fn stream_response(
     let stream_idle_timeout = jcode_base::provider::stream_idle_timeout();
 
     let url = format!("{}/chat/completions", api_base);
+    // Log the tier actually being sent so an operator can verify flex vs
+    // priority vs standard per request without a packet capture.
+    jcode_base::logging::info(&format!(
+        "REQUEST SERVICE_TIER: {} (model: {}, endpoint: {})",
+        request
+            .get("service_tier")
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| "omitted (standard)".to_string()),
+        model,
+        api_base
+    ));
     let mut req = apply_kimi_coding_agent_headers(
         auth.apply(
             client

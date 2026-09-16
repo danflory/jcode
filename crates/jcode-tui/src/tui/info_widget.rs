@@ -633,6 +633,10 @@ pub struct InfoWidgetData {
     pub auth_method: AuthMethod,
     /// Upstream provider (e.g., which OpenRouter provider served the request: fireworks, etc.)
     pub upstream_provider: Option<String>,
+    /// Tier the gateway actually served the last request with (response
+    /// `service_tier` echo), as opposed to `service_tier` which is the
+    /// configured/requested tier.
+    pub served_service_tier: Option<String>,
     /// Active connection type (websocket/https/etc.)
     pub connection_type: Option<String>,
     /// Mermaid diagrams to display

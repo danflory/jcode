@@ -920,6 +920,11 @@ pub enum ServerEvent {
     #[serde(rename = "upstream_provider")]
     UpstreamProvider { provider: String },
 
+    /// Service tier the gateway confirmed serving the request with
+    /// (response `service_tier` echo, e.g. DeepInfra priority/flex)
+    #[serde(rename = "service_tier")]
+    ServiceTier { tier: String },
+
     /// Swarm status update (subagent/session lifecycle info)
     #[serde(rename = "swarm_status")]
     SwarmStatus { members: Vec<SwarmMemberStatus> },

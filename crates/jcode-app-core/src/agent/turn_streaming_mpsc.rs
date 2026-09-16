@@ -871,6 +871,10 @@ impl Agent {
                         self.last_upstream_provider = Some(provider.clone());
                         let _ = event_tx.send(ServerEvent::UpstreamProvider { provider });
                     }
+                    StreamEvent::ServiceTier { tier } => {
+                        self.last_service_tier = Some(tier.clone());
+                        let _ = event_tx.send(ServerEvent::ServiceTier { tier });
+                    }
                     StreamEvent::Error {
                         message,
                         retry_after_secs,

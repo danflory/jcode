@@ -200,6 +200,9 @@ pub struct Agent {
     last_upstream_provider: Option<String>,
     /// Last observed transport/connection type for this session
     last_connection_type: Option<String>,
+    /// Service tier the gateway confirmed serving the last request with
+    /// (DeepInfra priority/flex/standard echo)
+    last_service_tier: Option<String>,
     /// Last provider-supplied human-readable transport detail for this session
     last_status_detail: Option<String>,
     /// Pending swarm alerts to inject into the next turn
@@ -319,6 +322,7 @@ impl Agent {
             provider_session_id: None,
             last_upstream_provider: None,
             last_connection_type: None,
+            last_service_tier: None,
             last_status_detail: None,
             pending_alerts: Vec::new(),
             current_turn_system_reminder: None,

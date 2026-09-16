@@ -872,6 +872,9 @@ pub struct App {
     upstream_provider: Option<String>,
     // Active stream connection type (websocket/https/etc.)
     connection_type: Option<String>,
+    // Tier the gateway actually served the last request with (response
+    // `service_tier` echo), as opposed to remote_service_tier (requested)
+    served_service_tier: Option<String>,
     // Provider-supplied human-readable transport detail for the current stream
     status_detail: Option<String>,
     // Session-wide token + cache accounting (accumulated across all turns).

@@ -421,6 +421,19 @@ impl OpenRouterStream {
                 }
             }
 
+            // DeepInfra (and OpenAI) echo the actually-served tier back in the
+            // response body. Surface it so the UI/logs can show flex vs
+            // priority vs standard billing rather than guessing from intent.
+            if let Some(tier) = parsed
+                .get("service_tier")
+                .and_then(|t| t.as_str())
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+            {
+                self.pending
+                    .push_back(StreamEvent::ServiceTier { tier: tier.to_string() });
+            }
+
             // Extract usage if present
             if let Some(usage) = parsed.get("usage") {
                 let input_tokens = usage.get("prompt_tokens").and_then(|t| t.as_u64());

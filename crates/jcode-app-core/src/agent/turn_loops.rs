@@ -567,6 +567,12 @@ impl Agent {
                         }
                         self.last_upstream_provider = Some(provider);
                     }
+                    StreamEvent::ServiceTier { tier } => {
+                        if trace {
+                            eprintln!("[trace] service_tier={}", tier);
+                        }
+                        self.last_service_tier = Some(tier);
+                    }
                     StreamEvent::OpenAIReasoning {
                         id,
                         summary,

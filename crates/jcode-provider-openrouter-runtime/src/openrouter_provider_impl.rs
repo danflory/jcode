@@ -204,12 +204,37 @@ impl Provider for OpenRouterProvider {
             .openai_service_tier
             .as_deref()
             .map(str::trim);
-        // Map down to the tiers the compat endpoint actually accepts.
+        // Map down to the tiers the compat endpoint actually accepts. DeepInfra
+        // documents exactly two requestable tiers on tagged models: "priority"
+        // (1.5x billing) and "flex" (0.8x billing, may queue up to 10 minutes).
+        // Omitting the field means standard real-time scheduling (1x); sending
+        // "standard"/"auto" is not documented, so those collapse to omission.
         if let Some(tier) = service_tier_override {
-            // Compat gateways expect "standard" | "flex" | "priority".
-            if !tier.is_empty() && tier != "off" && tier != "standard" && tier != "auto" {
-                request["service_tier"] = serde_json::json!(tier);
+            match tier {
+                "flex" | "priority" => {
+                    request["service_tier"] = serde_json::json!(tier);
+                    jcode_base::logging::info(&format!(
+                        "Service tier: sending service_tier=\"{}\" in request body",
+                        tier
+                    ));
+                }
+                "" | "off" | "standard" | "auto" | "none" => {
+                    jcode_base::logging::info(
+                        "Service tier: standard (field omitted from request body)",
+                    );
+                }
+                other => {
+                    // Unknown value: still send it verbatim so the gateway,
+                    // not jcode, decides whether it is valid.
+                    request["service_tier"] = serde_json::json!(other);
+                    jcode_base::logging::warn(&format!(
+                        "Service tier: sending unrecognized value \"{}\" verbatim; gateway may reject or fall back to standard",
+                        other
+                    ));
+                }
             }
+        } else {
+            jcode_base::logging::info("Service tier: standard (field omitted from request body)");
         }
 
         // Optional thinking override for OpenRouter (provider-specific).

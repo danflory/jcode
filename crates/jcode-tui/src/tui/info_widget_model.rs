@@ -123,6 +123,28 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         ]));
     }
 
+    // Tier the gateway actually served the last request with (DeepInfra and
+    // OpenAI echo service_tier in the response). Only shown when it differs
+    // from standard so plain-tier sessions stay uncluttered.
+    if let Some(tier) = data
+        .served_service_tier
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("standard"))
+    {
+        lines.push(Line::from(vec![
+            Span::styled("Tier: ", Style::default().fg(rgb(140, 180, 255))),
+            Span::styled(
+                tier.to_string(),
+                Style::default().fg(if tier.eq_ignore_ascii_case("priority") {
+                    rgb(255, 200, 120)
+                } else {
+                    rgb(160, 220, 160)
+                }),
+            ),
+        ]));
+    }
+
     if data.auth_method != AuthMethod::Unknown {
         let (icon, label, color) = match data.auth_method {
             AuthMethod::ApiKey => ("🔑", "API Key", rgb(180, 180, 190)),

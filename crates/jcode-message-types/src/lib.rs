@@ -747,6 +747,10 @@ pub enum StreamEvent {
     },
     /// Upstream provider info (e.g., which provider OpenRouter routed to)
     UpstreamProvider { provider: String },
+    /// Service tier the gateway confirmed it served the request with
+    /// (from the response's `service_tier` field, e.g. DeepInfra greedy
+    /// confirmation of priority/flex/standard).
+    ServiceTier { tier: String },
     /// Native tool call from a provider bridge that needs execution by jcode
     NativeToolCall {
         request_id: String,

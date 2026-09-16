@@ -1607,6 +1607,7 @@ impl crate::tui::TuiState for App {
             model,
             reasoning_effort,
             service_tier,
+            served_service_tier: self.served_service_tier.clone(),
             native_compaction_mode,
             native_compaction_threshold_tokens,
             session_count,

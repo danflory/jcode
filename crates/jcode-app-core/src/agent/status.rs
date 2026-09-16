@@ -152,6 +152,10 @@ impl Agent {
         self.last_connection_type.clone()
     }
 
+    pub fn last_service_tier(&self) -> Option<String> {
+        self.last_service_tier.clone()
+    }
+
     pub fn last_status_detail(&self) -> Option<String> {
         self.last_status_detail.clone()
     }
