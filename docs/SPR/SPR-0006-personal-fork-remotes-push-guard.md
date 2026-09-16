@@ -10,7 +10,7 @@
 - `docs/SPR/SPR-0006-personal-fork-remotes-push-guard.md` — this document
 - `docs/SPR/update-log.md` — appended a row for this SPR
 
-**Commit:** `708b6814b` — `docs(spr): SPR-0006 personal fork + remotes + push guard`
+**Commit:** `a3d5c3f1f` — `docs(spr): SPR-0006 personal fork + remotes + push guard`
 (2026-09-16, local)
 
 **Status:** Committed on the personal `dev` branch and pushed to the personal
