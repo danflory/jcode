@@ -219,6 +219,11 @@ impl Provider for OpenRouterProvider {
                     ));
                 }
                 "" | "off" | "standard" | "auto" | "none" => {
+                    // Force out any pre-existing tier so standard truly means
+                    // "omit the field". A stale "flex"/"priority" injected by an
+                    // earlier layer (e.g. a fast-mode default) must never survive
+                    // into the wire body when the configured tier is standard.
+                    request.as_object_mut().map(|obj| obj.remove("service_tier"));
                     jcode_base::logging::info(
                         "Service tier: standard (field omitted from request body)",
                     );
@@ -234,6 +239,9 @@ impl Provider for OpenRouterProvider {
                 }
             }
         } else {
+            // No tier configured: standard/omit. Same stale-tier eviction as
+            // the explicit "standard" arm above.
+            request.as_object_mut().map(|obj| obj.remove("service_tier"));
             jcode_base::logging::info("Service tier: standard (field omitted from request body)");
         }
 
