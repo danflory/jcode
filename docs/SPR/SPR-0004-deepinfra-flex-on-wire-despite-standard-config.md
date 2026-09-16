@@ -168,6 +168,19 @@ line; `deepinfra.env.bak-20260915` holds the pre-probe state.
 - **Commit:** next commit.
 - **Undo:** N/A (report-only).
 
+### C8. FIX APPLIED + VERIFIED (2026-09-15 ~23:33Z)
+- **When flex line was placed:** `deepinfra.env` mtime 2026-09-14 20:19:17 EDT;
+  `deepinfra.env.probe-backup` 20:14:31 EDT (pre-probe state without the line is
+  `deepinfra.env.bak-20260915`, Sep 8).
+- **Fix:** removed `JCODE_OPENAI_EXTRA_BODY=...` line from `~/.config/jcode/deepinfra.env`.
+  Backup: `~/.config/jcode/deepinfra.env.pre-standard-20260916`.
+- **Verification probe (debug server):**
+  `after_service_tier_block=ABSENT`, `after_extra_body_merge=ABSENT`,
+  `end_build_request=ABSENT` → request goes out with no tier field = standard.
+- **Undo:** restore from `deepinfra.env.pre-standard-20260916`.
+- **Note:** production server (PID 2584151) still holds the pre-fix env file in its
+  constructed provider; restart needed for the production process to serve standard.
+
 ## TEST PROCEDURE TIMING (local EDT, 2026-09-15)
 
 | Time (EDT) | Elapsed | Step |
