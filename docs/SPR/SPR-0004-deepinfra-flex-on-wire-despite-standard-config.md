@@ -181,6 +181,27 @@ line; `deepinfra.env.bak-20260915` holds the pre-probe state.
 - **Note:** production server (PID 2584151) still holds the pre-fix env file in its
   constructed provider; restart needed for the production process to serve standard.
 
+## Why this was hard to locate (post-mortem, operator-confirmed)
+
+The flex injection was a change made **together with the operator on 2026-09-14
+~20:19 EDT** (a deliberate flex probe: backup at 20:14:31, line added 20:19:17).
+It was not found for a long time because:
+
+1. It lives in `~/.config/jcode/deepinfra.env`, which is outside both the jcode
+   repo and `~/.jcode/config.toml` — no grep of code/config surfaces it.
+2. The file's own comment ("the openrouter runtime does NOT read
+   `[provider].openai_service_tier`; this env var is the supported way") was true
+   when written; SPR-0003 then added the config passthrough, so the env override
+   became a second, silently-winning mechanism.
+3. A prior session's confabulation (`openai_service_tier = "low"`) pointed all
+   investigation at `config.toml` and was marked false in the handoff, which
+   discredited the operator's accurate recollection that a change was made
+   "yesterday".
+
+**Lesson:** for provider-request behavior, check the resolved env files
+(`app_config_dir()/ <provider>.env`) alongside config.toml; env `extra_body`
+overrides the config tier because it merges after the eviction block.
+
 ## TEST PROCEDURE TIMING (local EDT, 2026-09-15)
 
 | Time (EDT) | Elapsed | Step |
