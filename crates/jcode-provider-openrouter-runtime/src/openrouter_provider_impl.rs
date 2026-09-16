@@ -245,16 +245,6 @@ impl Provider for OpenRouterProvider {
             jcode_base::logging::info("Service tier: standard (field omitted from request body)");
         }
 
-        // TEMP DEBUG SPR-0004: what is in request.service_tier right after eviction?
-        eprintln!(
-            "SPR0004DBG after_service_tier_block service_tier={:?} provider_features={}",
-            request
-                .get("service_tier")
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "ABSENT".to_string()),
-            self.supports_provider_features
-        );
-
         // Optional thinking override for OpenRouter (provider-specific).
         // Skip for strict OpenAI-schema endpoints (e.g. Mistral) which reject
         // the non-standard top-level `thinking` field with a 422 (issue #261).
@@ -320,15 +310,6 @@ impl Provider for OpenRouterProvider {
             }
         }
 
-        // TEMP DEBUG SPR-0004 BISECT: what is in request.service_tier after extra_body merge?
-        eprintln!(
-            "SPR0004DBG after_extra_body_merge service_tier={:?}",
-            request
-                .get("service_tier")
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "ABSENT".to_string())
-        );
-
         let message_items = request
             .get("messages")
             .and_then(|value| value.as_array())
@@ -366,15 +347,6 @@ impl Provider for OpenRouterProvider {
                     self.supports_provider_features.to_string(),
                 ),
             ],
-        );
-
-        // TEMP DEBUG SPR-0004: what is in request.service_tier at the very end of build_request?
-        eprintln!(
-            "SPR0004DBG end_build_request service_tier={:?}",
-            request
-                .get("service_tier")
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "ABSENT".to_string())
         );
 
         // OpenRouter uses HTTPS/SSE transport only
