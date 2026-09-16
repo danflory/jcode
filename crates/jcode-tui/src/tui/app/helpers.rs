@@ -516,7 +516,17 @@ fn copy_to_clipboard_osc52(text: &str) -> bool {
     let encoded = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
     // OSC 52: ESC ] 52 ; c ; <base64> BEL
     let seq = format!("\x1b]52;c;{}\x07", encoded);
-    out.write_all(seq.as_bytes()).is_ok() && out.flush().is_ok()
+    let ok = out.write_all(seq.as_bytes()).is_ok() && out.flush().is_ok();
+    // Evidence trail for remote/headless sessions (SSH, VM sandboxes) where
+    // native clipboard helpers are absent and this is the only VM-to-host
+    // path. A successful write does not guarantee the terminal honored the
+    // sequence (VTE gates on focus and silently drops it), so this only
+    // distinguishes "emitted to the TTY" from "never emitted". DARR-158.
+    crate::logging::info(&format!(
+        "EVENT event=CLIPBOARD_OSC52 path=osc52 tty=true write_ok={ok} bytes={}",
+        text.len()
+    ));
+    ok
 }
 
 pub(super) fn effort_display_label(effort: &str) -> &str {
