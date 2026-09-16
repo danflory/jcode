@@ -12,10 +12,12 @@
 **Commit:** `a7b6411bddb882f919c02ae8af6a0448c30da618`
 `fix(swarm): persist visible spawn sessions so --resume can attach` (2026-09-16 08:00:17 -0400)
 
-**Status:** Committed locally on the personal no-push clone. Not yet installed:
-the running server (v0.85.3-dev `3078606c0`, dirty) predates the fix. Activation
-requires a rebuild published to `~/.jcode/builds/current`, which triggers the
-server reload path (`server_has_newer_binary` / `reload_exec_target`).
+**Status:** Committed locally on the personal no-push clone. **Activated**
+2026-09-16 12:49:08 UTC via `selfdev build-reload`: the shared server was
+repointed from the pre-fix `51eb6d8e2-dirty` to `572f2eb0d` and the daemon
+reloaded onto it (`server_has_newer_binary` / `reload_exec_target`). Shared
+server, current channel, and canary all now run `572f2eb0d`; visible swarm
+spawns persist their session snapshot so `jcode --resume <id>` attaches.
 
 **Author:** Dan Flory (operator) + jcode agent (coordinator session `session_bear`).
 
