@@ -855,6 +855,46 @@ fn version_command_shows_remote_server_identity_and_update_status() {
 }
 
 #[test]
+fn info_command_reports_server_session_identity_in_remote_mode() {
+    let mut app = create_test_app();
+    // The local startup stub must differ from the server-bound session so the
+    // test can prove /info honors the server identity in remote mode.
+    app.session.short_name = Some("snail".to_string());
+    app.session.id = "session_snail_1789662214733_aaaaaaaaaaaaaaaa".to_string();
+    app.is_remote = true;
+    app.remote_session_id = Some("session_eagle_1789662214733_bbbbbbbbbbbbbbbb".to_string());
+
+    assert!(super::state_ui::handle_info_command(&mut app, "/info"));
+    let content = app.display_messages().last().unwrap().content.clone();
+    assert!(
+        content.contains("Session: eagle (session_)"),
+        "remote /info should report the server session, got:\n{content}"
+    );
+    assert!(
+        !content.contains("snail"),
+        "remote /info must not report the local stub session, got:\n{content}"
+    );
+    assert!(
+        content.contains("Remote Mode: connected"),
+        "{content}"
+    );
+}
+
+#[test]
+fn info_command_keeps_local_session_identity_outside_remote_mode() {
+    let mut app = create_test_app();
+    app.session.short_name = Some("snail".to_string());
+    app.session.id = "session_snail_1789662214733_aaaaaaaaaaaaaaaa".to_string();
+
+    assert!(super::state_ui::handle_info_command(&mut app, "/info"));
+    let content = app.display_messages().last().unwrap().content.clone();
+    assert!(
+        content.contains("Session: snail (session_)"),
+        "non-remote /info should keep the local session, got:\n{content}"
+    );
+}
+
+#[test]
 fn skills_command_lists_loaded_and_endorsed_skills() {
     let mut app = create_test_app();
 

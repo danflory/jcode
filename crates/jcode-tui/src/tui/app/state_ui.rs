@@ -1910,11 +1910,34 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
 
         let mut info = String::new();
         info.push_str(&format!("Version: {}\n", version));
-        info.push_str(&format!(
-            "Session: {} ({})\n",
-            app.session.short_name.as_deref().unwrap_or("unnamed"),
-            &app.session.id[..8]
-        ));
+        // In remote mode the server-bound session is authoritative; the local
+        // `app.session` is only a cache/startup stub and must never be reported
+        // as the session identity. This mirrors how /context
+        // (`active_client_session_id`) and update_terminal_title resolve the
+        // session. Non-remote behavior is unchanged.
+        let session_id = app
+            .active_client_session_id()
+            .unwrap_or(app.session.id.as_str());
+        let session_name = if app.is_remote {
+            crate::id::extract_session_name(session_id)
+                .map(str::to_string)
+                .unwrap_or_else(|| session_id.to_string())
+        } else {
+            app.session
+                .short_name
+                .as_deref()
+                .unwrap_or("unnamed")
+                .to_string()
+        };
+        // Guard against slicing an id shorter than 8 chars or one without the
+        // real `session_` prefix, which would render as the degenerate
+        // "(session_)" placeholder.
+        let session_prefix = if session_id.len() >= 8 && session_id.starts_with("session_") {
+            &session_id[..8]
+        } else {
+            session_id
+        };
+        info.push_str(&format!("Session: {} ({})\n", session_name, session_prefix));
         info.push_str(&format!(
             "Duration: {} ({} turns)\n",
             duration_str, turn_count
