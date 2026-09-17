@@ -1,0 +1,171 @@
+# SPR-0008: sessionCorruption — client-local session state overrides server session identity and working directory
+
+## Status
+Confirmed (investigating)
+
+## Severity
+Major
+
+## Affected component
+`crates/jcode-app-core/src/server/client_lifecycle.rs` (`handle_resume_session` cwd override),
+`crates/jcode-app-core/src/agent/turn_execution.rs` (`restore_session_with_working_dir`),
+`crates/jcode-tui/src/tui/app/state_ui.rs` (`/info` session identity in remote mode),
+plus the wider class of client-local session reads in `crates/jcode-tui/src/tui/`.
+
+## Environment
+- Version: `v0.84.11-dev (4620e42bc)`, branch `dev` -> branch `sessionCorruption`
+- OS: Linux (Ubuntu 24.04, QEMU)
+- Topology: shared server daemon with multiple headed TUI clients (Remote Mode:
+  connected), six collaborating sessions each with its own swarm of workers
+- Observed against `deepseek-ai/DeepSeek-V4.1-Flash` via OpenRouter
+
+## Observed behavior
+
+### A. Resumed session working directory silently rewritten (session `t-rex`)
+Session `session_t-rex_1789662214733_691326d2e2194bf2` was created with
+`working_dir = /home/d/dev_env/clones/Overwatch_2` and performed all its work
+there. Late in the session, an operator asked `pwd?`. The tool reported
+`/home/d/dev_env/clones/Overwatch` — a *different clone* — and the agent itself
+flagged the mismatch:
+
+> `/home/d/dev_env/clones/Overwatch`
+> Note: that is not the directory this session started in
+> (`/home/d/dev_env/clones/Overwatch_2`), and it is a different clone from the
+> one where I did the DAR-OW-158 work.
+
+On-disk evidence of the rewrite:
+
+| File | `working_dir` |
+|---|---|
+| `session_t-rex_....json.pre-wipe-1789671862548.bak` (19:04) | `/home/d/dev_env/clones/Overwatch_2` |
+| `session_t-rex_....json` (live) | `/home/d/dev_env/clones/Overwatch` |
+
+The server log shows exactly when and why:
+
+```
+20:43:46.259 ENV_SNAPSHOT reason=create session_chick_1789677826145_9af79213e7bc7045
+             working_dir=/home/d/dev_env/clones/Overwatch
+20:43:46.336 phase=resume_start source_session_id=session_chick_1789677826145_9af79213e7bc7045
+             target_session_id=session_t-rex_1789662214733_691326d2e2194bf2
+20:43:46.560 ENV_SNAPSHOT reason=resume  session_id=session_t-rex_1789662214733_691326d2e2194bf2
+             working_dir=/home/d/dev_env/clones/Overwatch
+```
+
+A client launched in `/home/d/dev_env/clones/Overwatch` created session `chick`
+bound to that cwd, then immediately resumed `t-rex`, overwriting `t-rex`'s
+stored `Overwatch_2`.
+
+### B. Client-local session identity reported as the session (`/info`)
+From a remote client, `/info` printed:
+
+```
+Session: snail (session_)
+CWD: /home/d/dev_env/jcode
+Remote Mode: connected
+```
+
+`snail` is a *local client-side stub*, not the serving session. `/info` renders
+`app.session.short_name` and `app.session.id[..8]` (`state_ui.rs:1913-1917`),
+and `std::env::current_dir()` (`state_ui.rs:1888-1890`) — all client-local.
+The parenthesised `session_` is a truncated id prefix from a local placeholder.
+
+This misled an agent asked "what session are you?": it answered `eagle`
+(the on-disk session matching its context timestamp and cwd) while the actual
+serving session was reported by the client footer as `snail`. Neither
+declared identity was authoritative, because the runtime exposes no
+client-visible ground truth for a remote session's identity.
+
+## Expected behavior
+- Resuming a session must not silently rewrite that session's persisted
+  `working_dir`. The target session's stored directory is the authority; a
+  client-reported cwd is advisory at most.
+- `/info` (and any other user-facing identity surface) must report the
+  **server-bound** session in remote mode, never a client-local stub.
+
+## Reproduction steps
+
+Repro A (cwd rewrite):
+1. Create session S with `working_dir = <dirA>` and do some work.
+2. From a client whose process cwd is a *different existing* directory `<dirB>`
+   (e.g. a sibling clone), attach/resume S.
+3. Inspect S's session file: `working_dir` is now `<dirB>`.
+
+Repro B (identity):
+1. Connect a TUI client to the shared server in remote mode (no `--resume`).
+2. Run `/info`.
+3. Observe `Session: <local-stub-name> (session_)` instead of the server session.
+
+## Impact
+
+Directly affects the reported topology: six collaborating sessions, each with
+its own swarm of workers, on one shared server. One server serving many clients
+means the server is the only correct authority for session id, working
+directory, swarm membership/plan, and transcript. Any surface where a client
+substitutes its local view can produce:
+
+- **Wrong working directory for tools.** `bash` runs with
+  `command.current_dir(dir)` (`bash.rs:933`) using the session's cwd, so a
+  rewrite points every subsequent command at the wrong repository. In a swarm
+  sharing one server, workers can be misdirected at a sibling clone.
+- **Cross-session bleed / wrong answers.** Local reads and filters keyed on the
+  client's `app.session.id` can match or miss the wrong session when the local
+  placeholder differs from the server id.
+- **Misleading identity and diagnostics.** `/info`, terminal titles, transcripts,
+  todo/goal titles, prompt history, and side panels can all describe a
+  different session than the one actually serving the turn.
+
+## Root cause
+
+### A. Client-reported cwd is treated as authoritative on resume
+```
+client_lifecycle.rs:1848-1851  resume_working_dir = <current agent's cwd>
+client_lifecycle.rs:1864       passed as working_dir_override to handle_resume_session
+client_session.rs:1568-1571    agent.restore_session_with_working_dir(id, override)
+turn_execution.rs:689-692      session.working_dir = Some(working_dir)   // unconditional
+```
+The override is read from the *current* agent (the client's freshly created
+session bound to the client's launch cwd), not from the resume *target*. The
+only guard, `subscribe_working_dir_replacement` (`client_session.rs:489-509`),
+rejects **only the home directory** when the session already has a different
+non-home cwd. Sibling clones (`Overwatch` vs `Overwatch_2`) pass through.
+
+### B. Remote client renders its local placeholder as the session
+```
+tui_lifecycle.rs:1335-1339  app.session = local startup stub, or Session::create(None, None)
+tui_state.rs:885-903        remote_session_id is the authority; session_display_name() honors it
+commands.rs:2650-2657       active_session_id() honors it
+tui_lifecycle_runtime.rs:76-82  update_terminal_title() honors it
+state_ui.rs:1913-1921       /info does NOT honor it (uses app.session directly)
+state_ui.rs:1976-1979       /context DOES honor it (active_client_session_id())
+```
+`/info` is the outlier among identity surfaces: three sibling code paths
+already prefer `remote_session_id`, one does not.
+
+## Fix / resolution
+Not yet implemented. Planned, narrow-first on branch `sessionCorruption`:
+
+1. **`/info` identity in remote mode** — resolve session id/name through the
+   server-bound accessor (as `/context` and `update_terminal_title` already do),
+   and stop deriving duration from a local stub's `created_at`.
+2. **Resume cwd precedence** — prefer the target session's stored
+   `working_dir`; treat a client-reported cwd as advisory and refuse to
+   overwrite a differing existing path. Add a sibling-clone regression test.
+3. **Audit and converge the wider class** — local session-file reads and BUS
+   filters that use `app.session.id`:
+   - `local.rs:230,289,297,349,439,491,551,589` (session-id filters)
+   - `server_events.rs:2815`, `remote/session_persistence.rs:58`,
+     `state_ui_messages.rs:377`, `commands.rs:436`, `session_picker.rs:932`,
+     `workspace_client.rs:225`, `catchup.rs:55` (local session-file reads)
+   - local files keyed by session id: prompt history, reload input, subscribe
+     nudge, side panel, todo, mission
+
+Guiding rule: **in remote mode `app.session` is a cache, never an authority.**
+
+## Follow-ups
+- Decide whether the remote client should stop reading `~/.jcode/sessions`
+  entirely (server provides everything) or merely prefer server state.
+- Consider surfacing the authoritative remote session id in `/info` even when
+  the local stub disagrees, to make this class of defect self-evident.
+- The launch-hotkey bake (`config_file.rs:322-403` -> `repo_ranking.rs:379-433`,
+  ranked by session file mtime) can start a client in a sibling clone's cwd,
+  which is a plausible entry point for repro A. Worth reviewing alongside.
