@@ -24,6 +24,9 @@ version: "2026-09-17"
 | `02_TP_Change_Report.md` | TP Change Report | Test gap classification (V-1..V-6); no TP/no parent TP exists |
 | `03_Tool_and_Design.md` | Design | Session-prune tool documentation and the prioritized new design (P1..P11) |
 | `04_Semantic_Index_Options.md` | Options Report | Options for a persistent semantic index of the jcode source tree, with a ranked recommendation |
+| `05_Fix_Explanations.md` | Fix Explanations | Explains the two fix commits `94b211c60` (/info server identity) and `b1f65c323` (resume cwd precedence), their mechanisms, tests, and residual risk |
+| `06_Debugging_Session_Mixups.md` | Debug Guide | Repeatable procedure (index scanner + log/transcript/git evidence) for debugging SPR-0008 session mix-ups, with the t-rex worked example |
+| `07_Jcode_State_Repo.md` | Fix Log | New local git repo at `~/.jcode` (baseline `f509bf1`, fixture removal `380b75d`), usage, security rule and not-covered limits |
 
 ## Status
 
