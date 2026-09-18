@@ -351,3 +351,48 @@ Flex must never be sent" is **suspended by operator decision of 2026-09-18**, no
 retracted as a finding. The latency evidence above still stands; if flex queueing
 recurs, the undo path restores standard in one line. Revisit if observed latency
 degrades.
+
+### C12a. Sandbox binary rebuilt and installed (2026-09-18)
+
+**Why:** the sandbox was running a stale binary, `v0.84.11-dev (4620e42bc)`
+(mtime Sep 15, root-owned at `/usr/local/bin/jcode`). It lacked:
+
+- the SPR-0003 tier instrumentation (`REQUEST SERVICE_TIER` appeared **zero**
+  times in its log despite successful requests), so C12's sandbox tier could not
+  be verified from logs; and
+- the SPR-0010 session-context reorder (cache-prefix fix); and
+- the `4804febd9` tier hardening, so on that machine the config key did not
+  necessarily win over the env `extra_body` line.
+
+**What:** built `cargo build --release --bin jcode` in the sandbox repo
+(`/home/d/dev_env/jcode`, branch `dev`) and installed:
+
+```
+sudo cp /usr/local/bin/jcode /usr/local/bin/jcode.bak-4620e42bc   # backup
+sudo cp ~/dev_env/jcode/target/release/jcode /usr/local/bin/jcode
+sudo chmod 755 /usr/local/bin/jcode
+systemctl --user restart jcode-serve.service
+```
+
+Installed version: **`jcode v0.85.0-dev (103d9d05a)`**; service `active`.
+
+**Operational note:** the first install attempt failed with `Text file busy`
+because the running service held the binary. `systemctl --user stop` first, then
+copy, then start. A `pkill -f "jcode --provider auto serve"` used while
+debugging **killed the SSH session itself** (the pattern matched the remote
+shell's own command line); use `pkill -f "[j]code ..."` or plain `systemctl
+stop` instead.
+
+**Verification (sandbox, on the wire):**
+```
+[20:42:51] Service tier: sending service_tier="flex" in request body
+[20:42:51] REQUEST SERVICE_TIER: "flex" (model: deepseek-ai/DeepSeek-V4.1-Flash, ...)
+```
+Request completed in ~6.1s with **15360 of 15517 input tokens cached (~99%)**.
+
+**SPR-0010 cache fix confirmed present on the sandbox:** newest session context
+block has `OS:` at line 2 and `Date:` at line 10, i.e. the post-fix ordering
+(stable fields first).
+
+**Undo:** `sudo cp /usr/local/bin/jcode.bak-4620e42bc /usr/local/bin/jcode` then
+`systemctl --user restart jcode-serve.service`.
