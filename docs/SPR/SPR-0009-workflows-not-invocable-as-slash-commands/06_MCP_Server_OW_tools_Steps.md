@@ -232,8 +232,10 @@ The MCP server MUST:
 - Map exit code `0` → `isError: false`, stdout content as `content[].text`.
 - Map exit code `1` → `isError: true`, stderr as `content[].text`.
 - Map exit code `2` → `isError: true`, stderr as `content[].text`, preserving
-  the exact error message (jcode's `pre_tool` hook surfaces stderr on exit 2
-  per `protocol.rs:155-161`).
+  the exact error message. (Note: jcode's own `pre_tool` hook, which also blocks
+  on exit 2 and surfaces stderr, is a separate mechanism documented at
+  `crates/jcode-base/src/config/default_file.rs:596-600`; the MCP `isError`
+  mapping here is this server's own choice, not jcode hook behavior.)
 
 For inline imports, catch `OW_Error` / `Exception` and set `isError: true`
 with the exception message.
