@@ -277,10 +277,29 @@ Cost implication at h = 99.71%, across that range:
 | **aggregate (r = 0.0031)** | **0.00843** | **0.01569** | **-46.3%** |
 | child-only (r = 0.0128) | 0.01424 | 0.01743 | **-18.3%** |
 
-**Direction is unambiguous; magnitude is ratio-dependent.** At 99.71%,
-`V4.1-Flash` is cheaper under every assumption tested, by **18% to 57%** — the
-aggregate case being about **-46%**. An earlier revision of this section quoted
-only the -18.3% child-ratio figure, which understates the aggregate case.
+**Magnitude, and its limits.** At 99.71%, `V4.1-Flash` is cheaper across the
+whole *observed* range of output:input ratios, by **18% to 57%** — about **-46%**
+at the aggregate ratio. An earlier revision quoted only the -18.3% child-ratio
+figure, which understates the aggregate case.
+
+**This is not unconditional, and the boundary matters.** Because `V4.1-Flash`
+charges more for output ($0.60 vs $0.18 per 1M), a sufficiently output-heavy
+workload flips the comparison back. Solving for the crossover at h = 99.71%:
+
+| output:input (r) | `V4.1-Flash` diff |
+|---|---|
+| 0.0000 (pure input) | -56.6% |
+| 0.0031 (observed aggregate) | -46.3% |
+| 0.0128 (observed child) | -18.3% |
+| **0.0204** | **0.0% (crossover)** |
+| 0.0500 | +51.5% |
+| 0.1670 (1:6) | +136.3% |
+
+So the correct statement is: **for output:input below ~0.020, `V4.1-Flash` is
+cheaper at this hit rate.** Both observed ratios (0.0031, 0.0128) are comfortably
+below that, which is why the unified configuration wins here. A genuinely
+generation-heavy workload (r above ~0.02) would reverse it, and that has not been
+observed in this workload.
 
 The comparison crosses over around 97.6% and the gap widens as the rate climbs:
 
