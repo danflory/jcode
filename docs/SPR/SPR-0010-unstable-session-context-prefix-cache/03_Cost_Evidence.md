@@ -161,3 +161,45 @@ V-1 in the anchor.
   README and is flagged there as a governance gap requiring an operator
   decision. It was used here for rate-card arithmetic only, and its `mix` output
   was independently corrected per §5.
+
+## 8. Host baseline, larger sample (2026-09-18, post-fix investigation)
+
+Re-measured on the **host** over the full session history rather than the
+sandbox's small sample, and classified pre/post-fix by the *context block
+ordering itself* (post-fix = `Date:` appears after `OS:`) rather than by version
+string, after a version-string match proved unreliable (see §9).
+
+| Tag | Role | Model | Turns | Cache read | Hit rate |
+|---|---|---|---|---|---|
+| pre-fix | child | `deepseek-ai/DeepSeek-V4-Flash-0731` | **2525** | 115,737,856 | **88.6%** |
+| pre-fix | root | `deepseek-ai/DeepSeek-V4.1-Flash` | 1410 | 346,856,320 | **96.2%** |
+| pre-fix | root | `deepseek-ai/DeepSeek-V4-Flash-0731` | 1830 | 230,458,624 | 54.9% |
+| pre-fix | root | `zai-org/GLM-5.3-Flash` | 2155 | 403,748,224 | 87.5% |
+| pre-fix | child | `zai-org/GLM-5.3-Flash` | 60 | 646,912 | 62.0% |
+| POST-FIX | root | `deepseek-ai/DeepSeek-V4.1-Flash` | **2** | 26,624 | 98.2% |
+
+Two conclusions:
+
+1. **The worker baseline is 88.6% on 2525 turns**, materially more reliable than
+   the 151-turn sandbox figure (90.9%) used earlier in this report. Against the
+   97.58% break-even (§4), switching workers to `V4.1-Flash` costs more, and that
+   conclusion now rests on a solid sample.
+2. **Root/coordinator hit rate depends heavily on model**: 96.2% on
+   `V4.1-Flash` versus 54.9% on `V4-Flash-0731` (1830 turns). This supports the
+   configured split (coordinator on `V4.1-Flash`).
+
+**Post-fix measurement is still outstanding.** Only 2 post-fix turns exist, from
+throwaway probes, which is far too little to measure a rate. A real worker run
+with meaningful token volume is required for V-4's second half.
+
+## 9. Measurement pitfall found
+
+An initial attempt to classify sessions as pre/post-fix by searching the session
+JSON for the new build hash (`a007b44aa`) produced **false positives**: the hash
+appears elsewhere in the file (e.g. in tool output and session metadata), so two
+long-running *pre-fix* coordinator sessions were misclassified as post-fix and
+reported as 97.6%/98.6% "post-fix" results. Their context blocks in fact showed
+the old ordering (`Date`/`Time` before `OS`) and version `572f2eb0d`.
+
+Classify by the **context block ordering** (does `Date:` appear after `OS:`), not
+by a substring match on the file. Anything else reintroduces this error.
