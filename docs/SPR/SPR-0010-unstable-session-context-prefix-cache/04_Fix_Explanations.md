@@ -25,11 +25,13 @@ the anchor (`SPR-0010.md`), the Deficiency Report
 the Cost Evidence (`03_Cost_Evidence.md`).
 
 > [!NOTE]
-> **Implementation status.** At the time of writing, the SPR folder and this
-> report are committed, and the code fix is **not yet applied**.
-> `build_session_context` in `crates/jcode-base/src/prompt.rs` still emits
-> `session_datetime_lines()` third. This document specifies the fix precisely so
-> it can be implemented and reviewed against a written contract.
+> **Implementation status.** The **observability** half of this SPR is
+> implemented and verified (commit `b89aeaf6d`): `JCODE_TRACE=1` now dumps the
+> exact rendered request payload, confirming the defect directly. The **fix**
+> half is still **not applied** — `build_session_context` in
+> `crates/jcode-base/src/prompt.rs:699` still emits `session_datetime_lines()`
+> third. This document specifies the fix precisely so it can be implemented and
+> reviewed against a written contract.
 
 ## The Change
 
@@ -116,6 +118,73 @@ already correctly positioned as the first provider-visible item; it was
 correctly per-session immutable; it was correctly wrapped and identifiable. Only
 the intra-block field order was wrong, and field order is exactly what
 determines how far a prefix match extends.
+
+## Observability: seeing the real payload (implemented)
+
+Before implementing the fix, an observability lever was added so the diagnosis
+can be *seen* rather than inferred. Commit `b89aeaf6d`.
+
+`Agent::dump_request_prefix` (`crates/jcode-app-core/src/agent/prompting.rs`) is
+called at both send points — `turn_loops.rs` (blocking) and
+`turn_streaming_mpsc.rs` (streaming) — immediately after request assembly, with
+the final `send_messages`, `tools`, and `split_prompt` in hand. It emits, in wire
+order:
+
+- the static system prompt, then the dynamic system prompt
+- the tool schemas, plus a `fingerprint(name:desc_len)` for the whole tool set
+- each leading provider-visible message with `role` and rendered `len`
+
+Gated on the **existing** `JCODE_TRACE` switch via `logging::debug`, so no new
+config surface was added (a `features.dump_request_prefix` field was prototyped
+and reverted once `JCODE_TRACE` was found to already provide the knob). Off by
+default because the payload contains repo context.
+
+```
+JCODE_TRACE=1 jcode run "anything"
+grep -A2 'REQUEST PAYLOAD DUMP' ~/.jcode/logs/jcode-$(date +%F).log
+```
+
+**Verified live.** A real request produced a readable dump. The session-context
+message rendered as:
+
+```
+<system-reminder>
+# Session Context
+Date: 2026-09-18
+Time: 15:58:45          <-- volatile, third line
+Timezone: -04:00
+OS: linux
+Architecture: x86_64
+Jcode version: v0.85.0-dev (36e00ba20, dirty) (36e00ba20)
+Hardware: ...
+Working directory: /home/d/dev_env/jcode
+Git:
+  Branch: dev
+  Modified: 3 files
+     M crates/jcode-app-core/src/agent/prompting.rs
+     ...
+</system-reminder>
+```
+
+This confirms the reported defect directly: `Time:` is at position 3, ahead of
+every stable field, so any two sessions diverge there.
+
+### Finding: two additional volatile fields in the block
+
+The live dump surfaced volatility the static source read had not:
+
+1. **`Git:` is in the context block**, and it includes a `Modified: N files`
+   count and the file list. That changes whenever the working tree changes, so
+   two workers spawned at different tree states diverge at that line. It sits
+   **after** the stable fields, so it is a second-order divergence rather than a
+   prefix-killer, but it is more volatile than `Working directory:` alone.
+2. **`Jcode version:` includes build dirtiness** (`dirty`), so a rebuilt binary
+   changes that line. Relevant to this fix's assumption that the block is stable
+   across sessions on one machine: it is stable only for a fixed binary.
+
+Both should be considered when deciding the final field order. `Git:` in
+particular is worth an explicit decision — it is useful context for a worker, but
+it is per-invocation volatile.
 
 ## Test Coverage (per `02_TP_Change_Report.md`)
 
