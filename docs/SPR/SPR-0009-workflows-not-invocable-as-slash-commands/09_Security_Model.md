@@ -185,11 +185,25 @@ bootstrap ran against it, but the governed schema was never created there becaus
 governed DB is the `firecontrol-db` pod behind 51728. The separate pod-side postgres
 processes (`pid 276429` and workers) confirm these are two independent instances.
 
-Two actions follow, neither of which changes the MCP posture: narrow this bind to
-`127.0.0.1` since nothing outside the guest has business reaching it, and decide
-whether the role registry is intended — the presence of a `d2_supervisor` role
-suggests a planned second-supervisor or second-sandbox concept rather than pure
-leftover.
+**This is designed, not accidental**, and the roles are documented upstream:
+
+- `d2_supervisor` is defined in `docs/runbooks/RUNBOOK_DB_RBAC.md:110` as the
+  OS-companion of the operator identity, a member of `overwatch` that **can `SET ROLE`
+  to superuser**. The role hierarchy is drawn at `:115`. So the role that looked like a
+  stray is the operator's own documented privilege path, and its presence here is
+  expected rather than an anomaly.
+- The same runbook describes the client transport as TCP to the `firecontrol-db`
+  LoadBalancer via PgBouncer with **server backend port 5432** (`:49`). So 5432 is the
+  port the design associates with the database backend, and this instance is best read
+  as the **pre-container local database**: the RBAC registry from DAR-OW-117 applied,
+  schema since relocated into the pod. No PgBouncer process is running here, so this
+  guest is a simplified single-node variant of that design.
+
+One action follows, and it does not change the MCP posture: narrow this bind from
+`0.0.0.0` to `127.0.0.1`, since nothing outside the guest has business reaching a
+pre-cutover instance that holds no governed data. Whether to stop the service outright
+is the operator's call, and `enabled-runtime` means it will not return after a reboot
+regardless.
 
 ## 6. Credentials — STUB, MUST BE DEVELOPED
 
