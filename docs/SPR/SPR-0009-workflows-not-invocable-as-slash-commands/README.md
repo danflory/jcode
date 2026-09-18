@@ -112,10 +112,15 @@ works via `-m`; `check_id_uniqueness` does not work either way.
 ## Status
 
 - **Created**: 2026-09-17
-- **Status**: DRAFT (Confirmed — investigating)
+- **Status**: DRAFT. Documents 01-12 are written; the createSPR2 MCP server described
+  in `06_MCP_Server_OW_tools_Steps.md` §8 exists and is verified; the security posture
+  is treated in `09_Security_Model.md`. No code in `crates/` or `src/` was changed.
 - **Anchor**: `SPR-0009.md`
 - **Severity**: Major
 - **Branch**: `sessionCorruption` (created from `dev`)
+- **Where to resume**: the *Open decisions and operator actions* table above, then the
+  *Migration readiness* section, then `09_Security_Model.md` if the security posture is
+  the thread being picked up.
 
 ## Folder Convention
 
