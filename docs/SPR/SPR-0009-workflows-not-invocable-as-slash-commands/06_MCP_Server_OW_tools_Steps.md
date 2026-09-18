@@ -339,6 +339,14 @@ Per the resolution order (`crates/jcode-base/src/mcp/protocol.rs:577-582`: `.jco
 - `command: "python3"` — stdio transport per `crates/jcode-base/src/mcp/protocol.rs:192-207`.
 - The env var `OW_TOOLS_SHA256` is the hash-pinned pointer; `OW_TOOLS_PROJECT_ROOT`
   informs the server which project it serves.
+- **This shape was validated end to end on 2026-09-18.** A project-local
+  `.jcode/mcp.json` using exactly these fields (`command`, `args`, `env` with a
+  `${VAR:-default}` reference, `timeout_secs`, `shared: false`) was placed in a
+  scratch project. With the referenced variable unset, jcode resolved the
+  project-local file, connected the server, exposed
+  `mcp__docsnippet__ow_db_probe`, and a real session called it; the tool reported
+  the expanded path with `"exists": true`. So the contract holds at the
+  integration boundary, not just as JSON that parses.
 
 ---
 
