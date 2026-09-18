@@ -44,6 +44,20 @@ SPR-0009. They are recorded in this folder as research by explicit operator deci
 on the understanding that they migrate to Overwatch later. The inconsistency is
 intentional, not a folder-convention error.
 
+## Open decisions and operator actions
+
+These are recorded here because they are the residue of the research in this folder
+and would otherwise live only in conversation. None of them is agent-executable
+without an operator decision.
+
+| # | Item | Type | Detail | Where |
+|:--|:-----|:-----|:-------|:------|
+| 1 | Is firecontrol **one governed record or one per VM**? | Decision | If a VM per entitlement becomes the unit, those VMs must be clients of a central DB or multiplying the VM multiplies the governed truth. | `10_Clone_Isolation.md` §3.5 |
+| 2 | Narrow the pre-cutover postgres bind `0.0.0.0:5432` → `127.0.0.1` | Action | The instance is the pre-container local DB: designed RBAC registry, no governed schema, no live connections. `enabled-runtime`, so it will not return after reboot either way. | `09_Security_Model.md` §5.2 |
+| 3 | Migrate the 49 GB `backups/` to `/mnt/vm-backups` and leave a symlink | Action | Move, verify, then link. Takes the guest from 31 GB to roughly 80 GB free. Offered; not performed. | `11_Overwatch_Backup.md` §4 |
+| 4 | Define read scope / answer the credentials question | Decision | Credentials is an operator-declared stub that must be developed. The model-API egress channel cannot be closed by network policy and is the open security question. | `09_Security_Model.md` §6, §4.1 |
+| 5 | Pick one drift mechanism (hash pinning vs generated index) | Decision | 06 proposes hash pinning and never built it; 07 specifies a generated index with no hash. | `08_Comparison_06_vs_07.md` §2a |
+
 ## Status
 
 - **Created**: 2026-09-17
