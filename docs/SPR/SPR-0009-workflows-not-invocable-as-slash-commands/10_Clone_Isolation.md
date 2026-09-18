@@ -139,6 +139,44 @@ model, because it can become every other user. Today the operator account is
 login sessions (`su -`, `machinectl shell`, SSH, or `loginctl enable-linger` plus a
 login), or set `JCODE_RUNTIME_DIR` explicitly.
 
+### 3.5 Where this does NOT apply: inside a container
+
+Per-user uid isolation works on a **host VM** — which is where this work is happening.
+It does **not** work inside a container, and this was established upstream before this
+document was written. `DAR-OW-096` research R07 (*Container Principal Model — Credential
+Secrecy Is Void*) finds that a container is a **single principal**: the licensed
+operator and the agent are indistinguishable inside it, secrets are mounted world- or
+group-readable because the application must read its own credentials, and there is no
+privilege hierarchy to separate them with. Its conclusions:
+
+- `chattr`, `sudo`, and file ownership are **architecturally void** inside a container.
+- PostgreSQL RBAC is the **sole surviving enforcement boundary**, because it is
+  external to the container.
+- `harden.sh --pod-mode` drops all chattr/sudo/ownership steps accordingly.
+
+So the rule for this document: **uid-per-clone is a host-layer control.** If jcode work
+moves into pods, Option B collapses, and the boundary has to become credential-scoped
+instead — distinct DB roles, distinct ServiceAccounts, and egress policy per profile.
+That is exactly what `DAR-OW-096`'s three pod profiles do.
+
+This also frames the VM question: a VM per entitlement *restores* everything R07
+declared void (real uids, file modes, sudoers, `chattr`, per-VM kernel, hypervisor
+perimeter), which is a strong argument for it — but it re-opens roughly half of that
+DAR's decision tree, because R07, RD-20, R08, R11, R12, and R19 all descend from the
+container constraint.
+
+### 3.6 Related upstream design
+
+`DAR-OW-096` (`/home/d/dev_env/clones/Overwatch/docs/praca/DAR/DAR-OW-096_Containerized_Amnesiac_Deployment/`)
+solves the same parallelism problem one layer down, with the same four root causes in
+its README (daemon contention, hook collision, per-filesystem signature gates, and
+global agent-memory context bleed) and a container-based answer. Where it overlaps:
+ephemeral AI state versus preserved code, one-identity-many-entitlements
+(`auth.user_project_roles` plus a project/role picker), and per-profile credential
+scoping. Where it differs: its boundary is external (DB RBAC plus a crypto server)
+because the container has no internal one, whereas this document's host-layer options
+rely on the kernel's own separation.
+
 ## 4. Comparison
 
 | Dimension | Option A (per-clone home) | Option B (per-user) |

@@ -100,7 +100,26 @@ Per-clone cost is therefore unaffected by backups: the measured feature clones a
 pattern for hosting per-user jcode homes on the host instead of on the guest disk, and
 it is directly applicable to the multi-user layout in `10_Clone_Isolation.md` §3.
 
-## 6. Verification list (B-series)
+## 6. Related upstream design
+
+`DAR-OW-096` (Containerized Amnesiac Deployment) governs storage containment for the
+containerized target and is the destination for this research:
+
+- **VE2-Q6** decides that the host provides FIPS-certified kernel and LUKS2-encrypted
+  block storage, and that the application layer has **zero hostPath access to the host
+  `/home/d/dev_env`** (OPF-015, OPF-021). A virtiofs mount such as `/mnt/vm-backups` is
+  not a hostPath, so the pattern described here stays inside that constraint — but any
+  proposal to reach host paths directly would not.
+- **R13 / VE2-Q5** move context provisioning to `initContainer` clones from an internal
+  mirror, with a pre-teardown `git commit`/`push` flush. That flush is the same
+  "preserve code, discard ephemeral state" rule that makes `backups/` a candidate for
+  the host rather than the guest.
+- **VE2-Q13** adds a 30-day abandonment rule with automated state capture and volume
+  destruction, and `OW_tools/retention_engine/` implements it. A backup class moved to
+  `/mnt/vm-backups` should have its retention stated in those terms rather than
+  accumulating hourly dumps indefinitely.
+
+## 7. Verification list (B-series)
 
 - **B-1** — `backups/` recorded as a real directory with its filesystem, size, and
   free-space impact, not as a link.

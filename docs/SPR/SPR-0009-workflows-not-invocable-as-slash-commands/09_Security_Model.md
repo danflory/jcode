@@ -36,8 +36,8 @@ Everything relevant runs in one KVM guest:
 |:----------|:--------------|:---------|
 | MCP server | Child process of the jcode daemon, same guest | `McpClient::connect_in_dir`, `crates/jcode-base/src/mcp/client.rs:155-181` |
 | Daemon / agent | Same guest, serves sessions over a unix socket | `/run/user/1000/jcode.sock` |
-| Governed DB | Guest-local postgres | `127.0.0.1:51728`; `_dsn.py` notes the old `192.168.1.135:51729` PgBouncer is disabled |
-| Cluster | k3s in the same guest | `k3s` and `kubectl` installed; `/etc/rancher/k3s/k3s.yaml` present |
+| Governed DB | `firecontrol-db` **pod** inside the in-guest k3s cluster, reached through a hostport forward | `~/.pgpass` resolves to `127.0.0.1:51728`; `iptables -t nat` shows `KUBE-SERVICES ... overwatch/firecontrol-db:postgres cluster IP` (10.43.192.48) and `--dport 51728 -j DNAT --to-destination 10.42.0.15:51728`. `_dsn.py`'s note that the old `192.168.1.135:51729` PgBouncer is disabled is accurate but its "guest-local postgres" phrasing understates this: the governed DB is a containerized pod, not the host service |
+| Cluster | k3s in the same guest, hosting `firecontrol-db` | `k3s` and `kubectl` installed; `/etc/rancher/k3s/k3s.yaml` present (root-only); `cbr0` CNI, pod CIDR `10.42.0.0/24` |
 | Git clones | Same guest, one per feature | `/home/d/dev_env/clones/Overwatch_1..5` |
 
 The operator reaches this over SSH, which carries terminal I/O (TUI run in the
@@ -95,6 +95,14 @@ Therefore the effective security question is **"what may the agent read?"**, not
 "who can reach the MCP server?". A hardening plan that does not answer the read
 question does not change the exfiltration surface at all.
 
+**This channel cannot be closed by network policy, and it should be stated plainly.**
+The upstream container design (`DAR-OW-096` research R11) specifies default-deny egress
+with a whitelist of DNS, the DB port, the credential server, and the local cluster
+API. The model provider is not on that list. So either the provider is whitelisted —
+in which case the agent has a licensed path to POST source code to an external API,
+which is that document's own threat #1 — or the agent cannot run. Any "internal-only"
+claim should therefore be read as *no inbound surface*, not as *no exfiltration path*.
+
 ### 4.2 Capability
 
 What the agent process can do once it is running, all inside the guest:
@@ -135,6 +143,31 @@ unprotective. The agent is already the highest-privileged principal in the trust
 domain. Nothing in jcode enforces privilege separation between the agent, the MCP
 child, the cluster, and the governed DB. Internal-only does not reduce the risk; it
 means the actor is already inside.
+
+### 5.1 Measured listeners (the network claim, scoped precisely)
+
+"Internal-only" describes the absence of an inbound surface **for MCP**, not the
+absence of listeners in the guest. Measured on 2026-09-18:
+
+| Bind | Owner | Note |
+|:-----|:------|:-----|
+| `0.0.0.0:22` | sshd | how the operator reaches the guest |
+| `0.0.0.0:5432` | system postgres 16 (`/usr/lib/postgresql/16/bin/postgres -D /var/lib/postgresql/16/main`, `listen_addresses = '*'`) | **not the governed DB** — a second database on a wildcard address with no documented role here |
+| `*:6443` | k3s API server | wildcard |
+| `*:10250` | kubelet | wildcard |
+| `127.0.0.1:51728` | k3s hostport → `firecontrol-db` pod | the governed DB |
+| `127.0.0.1:10010`, `127.0.0.1:10248-10259` | k3s internals | loopback only |
+| `127.0.0.1:6444`, `:36411`, `:41837`, `:44763` | assorted local services | loopback only |
+| `127.0.0.53:53`, `127.0.0.54:53` | systemd-resolved | loopback only |
+
+jcode itself binds nothing: `ss -ltnp | grep jcode` is empty, and the daemon socket
+is a filesystem-scoped unix socket (§7).
+
+Two consequences. First, the four wildcard binds mean the internal-only claim rests
+entirely on the VM's network boundary, not on the guest's own configuration. Second,
+the second postgres on `0.0.0.0:5432` is not the governed database and has no
+documented purpose in this posture; it should be explained or removed before the
+posture is described as closed.
 
 ## 6. Credentials — STUB, MUST BE DEVELOPED
 
