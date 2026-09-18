@@ -114,6 +114,26 @@ Python entry point and translate the result into MCP `content[].text`.
 | `ow_list_all_themes()` | `mcp__ow_tools__list_themes` | _(none)_ | `{themes: [{theme, count}]}` | Stateless read |
 | `ow_prior_art(keyword)` | `mcp__ow_tools__prior_art` | `keyword: string` | `{results: [...]}` | Lessons + SR findings search |
 
+The entry-point signatures in this table were checked against the source, and
+the CLI forms by running them:
+
+- `ow_resolve_ci(*, path, title, ci_id) -> int | None`
+  (`OW_tools/ow_actions_governance.py:157-170`) — matches the `path?/title?/ci_id?`
+  union and the nullable id result.
+- `ow_register_ci(path)` (`OW_tools/ow_actions_efsm_compound.py:380`),
+  `ow_blast_radius(commit_sha)` (`OW_tools/ow_actions_governance.py:91`),
+  `ow_callers(tool) -> dict[str, int]` (`:197`),
+  `ow_list_all_themes()` (`:48`),
+  `ow_prior_art(keyword)` (`OW_tools/ow_actions_lessons.py:158`),
+  `ow_entropy_bucket_summary()` (`OW_tools/ow_actions_scanner.py:62`).
+- `python3 -m OW_tools.ci_lifecycle transition --ci-id <ID> --event <EVENT>
+  [--intent <INTENT>]` and `python3 -m OW_tools.next_number <CATEGORY>
+  [--peek]` — both verified by running their `--help`.
+- Both "not MCP-tool-shaped" claims hold: `ow_sign` imports
+  `CtapHidDevice`/`ClientPin`/`UserInteraction`
+  (`OW_tools/cli/ow_sign.py:21-24`), and `apply.py` refuses unless root
+  (`OW_tools/gemini_change_approve/apply.py:142`).
+
 **Not MCP-tool-shaped:**
 
 | OW_tools thing | Reason |
