@@ -396,3 +396,38 @@ block has `OS:` at line 2 and `Date:` at line 10, i.e. the post-fix ordering
 
 **Undo:** `sudo cp /usr/local/bin/jcode.bak-4620e42bc /usr/local/bin/jcode` then
 `systemctl --user restart jcode-serve.service`.
+
+### C12b. Sandbox `deepinfra.env` stale flex line removed (2026-09-18)
+
+**What:** the sandbox `~/.config/jcode/deepinfra.env` still carried the original
+SPR-0004 footgun, plus a comment asserting the opposite of the post-`4804febd9`
+behaviour:
+
+```
+# jcode's openai-compatible routes are served by the openrouter runtime, which does
+# NOT read [provider].openai_service_tier. This env var is the supported way to ...
+JCODE_OPENAI_EXTRA_BODY={"service_tier":"flex"}
+```
+
+That claim has been false since SPR-0003 added the config passthrough and
+`4804febd9` made the configured tier apply last. The file now contains only the
+API key, matching the host's post-C9 state.
+
+**Backup:** `~/.config/jcode/deepinfra.env.bak-stale-extra-body-<epoch>`.
+
+**Verification, and an independent proof of precedence:** the service was
+restarted to reload `EnvironmentFile`, then a request was issued. Flex is
+**still** on the wire with the env var gone:
+
+```
+[20:46:43] REQUEST SERVICE_TIER: "flex" (model: deepseek-ai/DeepSeek-V4.1-Flash, ...)
+```
+
+This proves the **config key alone** drives the tier on the sandbox once the
+binary carries the `4804febd9` hardening. Before C12a, the same removal could
+have silently dropped the sandbox to standard, since the old binary lacked the
+hardening and the env var was operative.
+
+**Undo:** `cp ~/.config/jcode/deepinfra.env.bak-stale-extra-body-<epoch> ~/.config/jcode/deepinfra.env`
+then `systemctl --user restart jcode-serve.service`. (Not recommended: the line
+is redundant with the config and its comment is false.)
