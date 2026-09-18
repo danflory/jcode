@@ -32,6 +32,7 @@ executed as a procedure. The proposed fix is a decision, not a survey.
 | `03_Options_and_Decisions.md` | Decision | Option A/B/C/D tradeoffs + the recommendation and cross-cutting analysis |
 | `04_Command_Surface_Contract.md` | Contract | The proposed custom command surface / interface contract |
 | `05_Enforcement_and_Governance.md` | Governance | Governed-CI preservation; enforceable vs advisory split; global dispatcher keyed on `JCODE_HOOK_CWD` |
+| `06_MCP_Server_OW_tools_Steps.md` | Steps | Build steps for a generated MCP server wrapping `OW_tools` Python entry points (an Option D instantiation), with registry/error/cwd contracts and the 8000-token exposure analysis |
 
 ## Status
 
