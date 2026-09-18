@@ -552,3 +552,41 @@ too, and it did not.
 **Method note:** reproduce with the `HTTP connection established in <n>ms` lines,
 binned by timestamp relative to the tier change. Prefer this over dashboard
 percentiles, which blend workload classes into one series.
+
+### C14. Billing-side verification: the flex discount IS applied (2026-09-18)
+
+**The gap this closes.** C12 verified that `service_tier="flex"` is *sent* on the
+wire. That is not the same claim as the discount being *billed*. SPR-0004 exists
+precisely because a request-side tier and the actual billing can diverge (the
+response `service_tier` echo was authoritative, the request intent was not). Until
+now the discount itself was verified only by the operator's own reporting.
+
+**Independent cross-check against dollars.** Operator dashboard figures:
+**163M tokens** and **$0.7901** spend for the flex window.
+
+| quantity | value |
+|---|---|
+| effective blended rate | **$0.00485 / 1M tokens** |
+| flex cached rate ($0.006 x 0.8) | **$0.00480 / 1M tokens** |
+| ratio | **1.01x** |
+| listed (undiscounted) cached rate | $0.006 / 1M (ratio would be 1.25x) |
+
+The blended rate lands on the *flex* cached rate, not the listed one. Because
+~100% of input is cached (C13-era hit rate ~99.9%), a blended rate sitting at the
+flex cached rate is consistent with exactly one situation: caching is saturated
+**and** the 0.8x discount is being billed.
+
+**What this establishes, and what it does not.**
+
+- **Establishes:** the flex discount is real in billing, not just on the wire; and
+  the ~99.9% hit rate is corroborated by an independent quantity (spend) rather
+  than by the same dashboard series that reported it.
+- **Does not establish:** precision. The 163M token figure and the $0.7901 figure
+  come from *adjacent* dashboard windows, not provably the identical interval, and
+  output tokens (billed at $0.60/M) would nudge the blended rate up slightly. The
+  1.01x agreement is therefore indicative rather than exact. Even so, the
+  *direction* is decisive: a missing discount would put the ratio at ~1.25x, and
+  it is not there.
+
+**Requirement status.** "Flex actually reduces cost" is now supported by observed
+spend, not only by a request field.
