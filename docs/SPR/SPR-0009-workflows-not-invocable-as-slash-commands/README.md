@@ -36,6 +36,13 @@ executed as a procedure. The proposed fix is a decision, not a survey.
 | `07_MCP_Delivery_Plan.md` | Plan | Hybrid delivery plan (Option A surface + Option D execution) for the 2-series, with the deterministic-vs-judgment boundary and a DAR/RFC/do/check pipeline |
 | `08_Comparison_06_vs_07.md` | Compare | How 06 and 07 relate: convergences, real divergences (hash pinning, exposure strategy), and what each resolves in the other |
 | `09_Security_Model.md` | Security | Full security treatment: internal-only network posture, single trust domain, capability and read scope, provenance, measured containment state, and the credentials stub |
+| `10_Clone_Isolation.md` | Research | Running parallel feature work without cross-talk: per-clone home vs per-user isolation, with measured costs and the two footguns |
+| `11_Overwatch_Backup.md` | Research | Backup intent vs observed state: the in-guest 49 GB `backups/` directory, the host HDD mount that already exists, and the migration risks |
+
+**Placement note (operator declaration).** Documents 10 and 11 are topically outside
+SPR-0009. They are recorded in this folder as research by explicit operator decision,
+on the understanding that they migrate to Overwatch later. The inconsistency is
+intentional, not a folder-convention error.
 
 ## Status
 
