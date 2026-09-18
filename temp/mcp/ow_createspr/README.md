@@ -115,6 +115,39 @@ about each:
    separately. `ow_register_subdocs` re-reads `id:`/`parent:` from disk after
    each upsert so the caller uses the DB-assigned id, as the workflow requires.
 
+## Running a real (non-dry-run) createSPR2
+
+Everything above defaults to dry-run. A real run is the same calls with
+`dry_run: false` plus the operator inputs at the two gates. Ordered, as
+`ow_createspr2_plan` returns it:
+
+1. `ow_update_author` — `session_id`, `praca` = parent UDRS id, `phase` =
+   `"scaffolding"`, `dry_run: false`.
+2. `ow_resolve_parent` — resolve the parent CI to a real integer id. Never guess.
+3. **GATE (operator, Phase 0 step 0e)** — `tp_gap_category` and
+   `tp_gap_reference` are operator decisions; the server will not invent them.
+   Stop and report the TP-gap analysis before continuing.
+4. **GATE (operator, Step 1)** — `change_class` (3 if code/workflow behavior
+   changes) and `lesson_key`.
+5. `ow_scaffold_spr` — `title`, `parent` (the resolved integer id), and
+   `dry_run: false`. A real run needs an explicit in-repo `target_dir`; the
+   server refuses to guess a governed `docs/praca/SPR` path for you.
+6. If scaffold printed "anchor registration will occur automatically", run
+   `ow_backpatch_parent` (`folder`, `anchor_id`) to set the sub-document parents.
+7. `ow_register_subdocs` — the anchor (only if the daemon deferred it), then
+   `01_Deficiency_Report.md`, `02_TP_Change_Report.md`, and `README.md`. Re-read
+   the DB-assigned `id:`/`parent:` from disk afterwards, not a hand-written id.
+8. `ow_upsert_praca` — `artifact_id` (`SPR-NNN`), `domain`, `severity`,
+   `ci_ids` = [anchor id].
+9. `ow_populate_success_criteria` — parse the anchor's
+   `## Verification Completion` table (`anchor_path`) or pass `criteria`.
+10. `ow_frontmatter_sweep` — `folder`. Expect zero violations at this point.
+11. **GATE (operator, END)** — report SPR id, folder path, anchor serial id,
+    `tp_gap_category`/`tp_gap_reference`, sweep result, and next action.
+
+Until the gates are answered in step 3/4, a real run is not possible; treating
+those values as mechanical is the failure mode this server exists to prevent.
+
 ## Known limits
 
 - **Out-of-repo `scaffold-folder` is broken upstream.** The CLI, after writing
