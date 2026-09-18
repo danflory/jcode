@@ -469,6 +469,14 @@ threshold: mode stays eager and the model sees the tools directly. This is why
 the §5.5 acceptance run could call `mcp__ow_createspr__ow_db_probe` by name with
 no `mcp_search` round-trip.
 
+**Behavioral confirmation of the swap (2026-09-18).** Setting
+`mcp_tools_token_threshold = 1` on the *running* daemon and repeating the same
+prompt in a new session made the model use `mcp_search` followed by `mcp_call`
+instead of the direct tool; restoring 8000 returned it to the direct
+`mcp__ow_createspr__ow_db_probe`. So the threshold does swap the surface exactly
+as described, and jcode re-reads `[tools]`/`[provider]` config on a live daemon
+with no restart.
+
 ### Tools worth eager exposure (below threshold)
 
 These are the ~5 highest-value tools that should always be visible to the model
