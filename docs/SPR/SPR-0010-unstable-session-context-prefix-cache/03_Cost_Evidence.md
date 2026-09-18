@@ -249,18 +249,40 @@ The measurement §3/§8 named as outstanding (V-4 second half) has been taken fr
 the DeepInfra dashboard, which is authoritative and avoids the classification
 pitfall in §9 entirely.
 
-**Observed: 99.71% cache hit rate over a ~25 minute window, 163M tokens, 2
-sessions with 5 workers each** (operator-reported, 2026-09-18).
+**Observed: 99.71% cache hit rate over a ~25 minute window, 163M TOTAL tokens,
+2 sessions with 5 workers each** (operator-reported, 2026-09-18).
 
-Cost implication, using the same child-mix formula as §4:
+Two important qualifications the operator supplied with the figure:
 
-| Model | Effective per input unit @ 99.71% |
+1. **163M is TOTAL tokens** (coordinator + workers combined), not a per-role
+   total.
+2. **The dashboard exposes no per-role breakdown** for that window. All traffic
+   is the same model (`V4.1-Flash`) and the same tier (`flex`), so the figure is
+   a genuine *aggregate*, not a worker-only rate.
+
+Because it is an aggregate, the appropriate output:input ratio is the aggregate
+one, not the child-only ratio used in §4. Measured from session history:
+
+| cohort | output:input |
 |---|---|
-| `V4.1-Flash` | **0.01424** |
-| `V4-Flash-0731` | 0.01743 |
+| pre-fix child only | 0.0128 |
+| **pre-fix ALL (aggregate)** | **0.0031** |
+| pure input (lower bound) | 0.0000 |
 
-**`V4.1-Flash` is ~18.3% CHEAPER at this hit rate, output included.** The
-comparison crosses over around 97.6% and the gap widens as the rate climbs:
+Cost implication at h = 99.71%, across that range:
+
+| output:input assumption | `V4.1-Flash` | `V4-Flash-0731` | `V4.1-Flash` diff |
+|---|---|---|---|
+| pure input (r = 0) | 0.00656 | 0.01513 | **-56.6%** |
+| **aggregate (r = 0.0031)** | **0.00843** | **0.01569** | **-46.3%** |
+| child-only (r = 0.0128) | 0.01424 | 0.01743 | **-18.3%** |
+
+**Direction is unambiguous; magnitude is ratio-dependent.** At 99.71%,
+`V4.1-Flash` is cheaper under every assumption tested, by **18% to 57%** — the
+aggregate case being about **-46%**. An earlier revision of this section quoted
+only the -18.3% child-ratio figure, which understates the aggregate case.
+
+The comparison crosses over around 97.6% and the gap widens as the rate climbs:
 
 | hit rate | `V4.1-Flash` diff vs `V4-Flash-0731` |
 |---|---|
