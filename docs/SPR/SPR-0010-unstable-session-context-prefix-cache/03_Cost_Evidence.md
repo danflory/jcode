@@ -249,8 +249,19 @@ The measurement §3/§8 named as outstanding (V-4 second half) has been taken fr
 the DeepInfra dashboard, which is authoritative and avoids the classification
 pitfall in §9 entirely.
 
-**Observed: 99.71% cache hit rate over a ~25 minute window, 163M TOTAL tokens,
-2 sessions with 5 workers each** (operator-reported, 2026-09-18).
+**Observed: 99.91% cache hit rate** for `V4.1-Flash` at tier `flex`, over a
+~50 minute window (operator-reported dashboard, 2026-09-18). An earlier reading in
+the same session gave 99.71% over ~25 minutes and 163M TOTAL tokens across 2
+sessions with 5 workers each; the two agree, and the later window is larger.
+
+**The residual dips are structural, not defects.** The hit-rate series is ~100%
+between task boundaries and drops to 70-80% at each task change, then recovers.
+That is the expected signature: a new task introduces new leading content, so the
+shared prefix diverges at that point and the cache must re-warm forward from it.
+Recovery to ~100% within each task is precisely what the fix was supposed to
+produce, and its absence was the original defect. Worth stating explicitly so the
+dips are not mistaken for a regression: they are the boundary between tasks, and
+the *sustained* rate between boundaries is the metric.
 
 Two important qualifications the operator supplied with the figure:
 
