@@ -150,6 +150,30 @@ those values as mechanical is the failure mode this server exists to prevent.
 
 ## Known limits
 
+- **`ow_query_ci` is allowlisted to 11 read-only `db_write.py` subcommands**
+  (`server.py:48-60`). A write subcommand is refused with a structured error, so
+  this passthrough cannot be used to bypass the dry-run default. Verified by
+  calling it with `upsert_sc`, `upsert_praca`, `ow_write_ci`, `apply_migration`,
+  `delete_test_data`, and `update_ci_status`: all six refused.
+- **Unbounded reads can exceed jcode's context guard and be refused.**
+  `ow_query_ci` passes arguments straight through, so a wide read is your
+  problem, not the server's: `query_ci_active --limit 500` returned 255,367
+  bytes (~64k tokens) in one reply. jcode caps a single tool output at
+  `min(30% of the context budget, 50_000 tokens)`
+  (`crates/jcode-app-core/src/tool/mod.rs:713, :724`) and **refuses** rather than
+  truncates an oversized result (`:868-915`), telling the caller to narrow the
+  query or pass `accept_large_output`. Use a tight `--limit` and pass
+  `accept_large_output` only when you mean it.
+- **Pipelined requests are handled correctly.** Three `tools/call` requests
+  written to stdin before any reply is read come back with matching ids and no
+  cross-talk, so the server is safe if jcode ever batches.
+- **A bogus `OW_REPO_ROOT` is reported, not crashed on.** `ow_db_probe` returns
+  a normal payload with `"exists": false` and
+  `"governed_db_reachable": false` plus a conclusion saying a real invocation
+  cannot proceed. Note the top-level `status` stays `"ok"` because the probe
+  itself succeeded: read `governed_db_reachable`, not `status`, when deciding
+  whether a real run can proceed.
+
 - **Out-of-repo `scaffold-folder` is broken upstream.** The CLI, after writing
   files, calls `_register_file()`, which does
   `file_path.relative_to(project_root)` and raises `ValueError` for any target
