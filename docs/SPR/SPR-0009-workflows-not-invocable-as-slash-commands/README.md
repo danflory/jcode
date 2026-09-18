@@ -1,0 +1,52 @@
+---
+# jcode-local frontmatter (SPR folder conversion, 2026-09-17).
+# jcode is NOT governed by Overwatch's UDRS: no UDRS/ci_impacted/parent numeric
+# ids are fabricated here. Only real, repo-verifiable values are used.
+id: SPR-0009
+title: workflows-not-invocable-as-slash-commands - Gemini workflows (and Overwatch .agents/workflows/*.md) are not invocable as slash commands in jcode
+status: DRAFT
+author: operator
+created: 2026-09-17
+domain: ENGINEERING
+severity: Major
+type: SPR.README
+version: "2026-09-17"
+---
+
+# SPR-0009: workflows-not-invocable-as-slash-commands
+
+This SPR reports and resolves a **capability gap** (not a defect): Gemini
+workflows, and the equivalent Overwatch `.agents/workflows/*.md` set, are
+procedures that jcode cannot execute as slash commands. They cannot be invoked
+as `/name args`, and when surfaced at all they are read as reference text, never
+executed as a procedure. The proposed fix is a decision, not a survey.
+
+## Document Index
+
+| Document | Type | Purpose |
+|:---------|:-----|:--------|
+| `README.md` | Index | This index + status + folder convention |
+| `SPR-0009.md` | Anchor | Problem statement, evidence, scope, requested fix, verification list V-1..V-n |
+| `01_Deficiency_Report.md` | Deficiency Report | Root design failure analysis (no command/registry concept in jcode) |
+| `02_TP_Change_Report.md` | TP Change Report | TP gap classification (test/verification gap, no TP exists) |
+| `03_Options_and_Decisions.md` | Decision | Option A/B/C/D tradeoffs + the recommendation and cross-cutting analysis |
+| `04_Command_Surface_Contract.md` | Contract | The proposed custom command surface / interface contract |
+| `05_Enforcement_and_Governance.md` | Governance | Governed-CI preservation; enforceable vs advisory split; global dispatcher keyed on `JCODE_HOOK_CWD` |
+
+## Status
+
+- **Created**: 2026-09-17
+- **Status**: DRAFT (Confirmed — investigating)
+- **Anchor**: `SPR-0009.md`
+- **Severity**: Major
+- **Branch**: `sessionCorruption` (created from `dev`)
+
+## Folder Convention
+
+Each SPR lives in its own folder under `docs/SPR/SPR-NNNN-<slug>/`. Numbering is
+sequential and non-reused; `SPR-0009` is the next free number after `SPR-0008`.
+Frontmatter follows the jcode-local convention established by
+`docs/SPR/SPR-0008-sessionCorruption/`: `id`, `title`, `status`, `author`,
+`created`, `domain`, `severity`, `type`, `version`. No fabricated UDRS ids,
+`ci_impacted`, or numeric `parent` ids are used. This folder is documentation
+only; it makes no code changes.
