@@ -226,6 +226,9 @@ impl Agent {
                 .message_timestamps
                 .then(|| Message::with_timestamps(&messages_with_memory));
             let send_messages = stamped.as_deref().unwrap_or(&messages_with_memory);
+            // Dump the exact rendered payload under JCODE_TRACE so an operator
+            // can see the real provider-visible prefix (SPR-0010).
+            self.dump_request_prefix(&split_prompt, &tools, send_messages);
             let prompt_has_recent_tool_result = Self::messages_end_with_tool_result(send_messages);
             let provider = Arc::clone(&self.provider);
             // Capture the model id the request was issued with. A provider may
