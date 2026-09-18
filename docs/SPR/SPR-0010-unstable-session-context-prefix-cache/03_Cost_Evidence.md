@@ -109,9 +109,11 @@ cache hit rate:
 | 96.4% | 0.01893 | 0.02068 | `V4-Flash-0731` |
 | **97.58%** | — | — | **break-even** |
 
-**Break-even is 97.58%.** Below it, `V4-Flash-0731` is the correct worker
-model. Workers currently sit at 90.9%, so the configured choice is correct
-today, and SPR-0010 is the reason they are not closer to the break-even.
+**Break-even is 97.58%** on this child mix. Below it `V4-Flash-0731` is the
+cheaper worker model; above it `V4.1-Flash` is. At the time of writing workers
+sat at 90.9%, i.e. below break-even — **but this prediction was overtaken by
+events: see §11**, where the measured hit rate after the fix was 99.71%, making
+`V4.1-Flash` ~18% cheaper than the alternative *and* the stronger reasoner.
 
 This is the concrete stake: a stable prefix is the mechanism by which the worker
 tier could legitimately be reconsidered, and without it the question cannot be
@@ -182,8 +184,9 @@ Two conclusions:
 
 1. **The worker baseline is 88.6% on 2525 turns**, materially more reliable than
    the 151-turn sandbox figure (90.9%) used earlier in this report. Against the
-   97.58% break-even (§4), switching workers to `V4.1-Flash` costs more, and that
-   conclusion now rests on a solid sample.
+   97.58% break-even (§4), switching workers to `V4.1-Flash` costs more *at that
+   pre-fix hit rate*. **Superseded by §11**: after the fix, the observed rate was
+   99.71%, well above break-even, so `V4.1-Flash` is cheaper.
 2. **Root/coordinator hit rate depends heavily on model**: 96.2% on
    `V4.1-Flash` versus 54.9% on `V4-Flash-0731` (1830 turns). This supports the
    configured split (coordinator on `V4.1-Flash`).
@@ -239,3 +242,49 @@ as provisional, not as a result:
 
 The post-fix worker figure cannot yet be distinguished from the pre-fix baseline;
 that is the measurement still outstanding (V-4 second half).
+
+## 11. RESULT: measured post-fix cache hit rate (2026-09-18, operator-observed)
+
+The measurement §3/§8 named as outstanding (V-4 second half) has been taken from
+the DeepInfra dashboard, which is authoritative and avoids the classification
+pitfall in §9 entirely.
+
+**Observed: 99.71% cache hit rate over a ~25 minute window, 163M tokens, 2
+sessions with 5 workers each** (operator-reported, 2026-09-18).
+
+Cost implication, using the same child-mix formula as §4:
+
+| Model | Effective per input unit @ 99.71% |
+|---|---|
+| `V4.1-Flash` | **0.01424** |
+| `V4-Flash-0731` | 0.01743 |
+
+**`V4.1-Flash` is ~18.3% CHEAPER at this hit rate, output included.** The
+comparison crosses over around 97.6% and the gap widens as the rate climbs:
+
+| hit rate | `V4.1-Flash` diff vs `V4-Flash-0731` |
+|---|---|
+| 96.0% | +12.2% (more expensive) |
+| 98.0% | -3.5% (cheaper) |
+| 99.0% | -12.0% (cheaper) |
+| **99.71%** | **-18.3% (cheaper)** |
+
+**Conclusion.** The §4 recommendation to keep workers on `V4-Flash-0731` is
+**superseded**. With the prefix fix in place and a warm cache, the unified
+`V4.1-Flash` configuration is both *cheaper* and *the stronger reasoner* — the
+rare combination where the cost argument and the capability argument point the
+same way. The earlier recommendation was correct for the pre-fix hit rate and is
+now obsolete.
+
+**Why the fix mattered.** `V4.1-Flash` has the lowest cached-input rate on the
+board ($0.006/1M vs $0.015/1M). So the higher the cache hit rate climbs, the more
+the expensive-looking model wins on price. The unstable prefix was capping that
+rate at ~60 shared characters, which is what made the cheaper tier look correct.
+This is the mechanism by which a prompt-formatting defect silently drove a model
+choice.
+
+**Caveat, stated plainly.** This is a 25-minute operator-observed dashboard
+window, not a controlled run. It is strong evidence because 163M tokens is a
+large sample and the dashboard avoids my own classification traps, but it is one
+window. `scripts/cache_hit_report.py` can corroborate it from session history as
+more post-fix traffic accumulates.
