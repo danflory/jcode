@@ -96,6 +96,19 @@ What this means for the migration:
   DAR folder, because it only recognizes `RFC-*`, `SPR-*`, and `CAR-*` prefixes. It is a
   valid gate for SPR-shaped folders, not a general-purpose one.
 
+### Other Overwatch validators, run for the same reason
+
+| Tool | Invocation | Result on this folder |
+|:-----|:-----------|:----------------------|
+| `check_folder_frontmatter` | `python3 -m OW_tools.check_folder_frontmatter <folder>` | 22 violations, all FM-1/FM-2 parent links; the FM-3 type defect was fixed (see above) |
+| `praca_validator` | `python3 OW_tools/praca_validator.py <files...>` | `No PRACA files to validate` — it skips these documents because they are not PRACA-shaped, so it is not a gate for this folder |
+| `naming_quality check` | `python3 -m OW_tools.naming_quality check <identifiers>` | `AMBIGUOUS` for `SPR-0009`, `06_MCP_Server_OW_Tools_Steps`, and `12_Sandbox_Listeners`, each with `domain_count: 0`: none maps to an ontology domain. The numbered-document convention here is not ontology-aligned, which matters only if Overwatch runs this over migrated files |
+| `check_id_uniqueness` | any form | **crashes on import** — `ModuleNotFoundError: No module named 'OW_tools'` from the `udrs_linker` → `daemon_contract` → `ast_parser` chain, in both script and `-m` form. Not usable as a gate today |
+
+Invocation note: `naming_quality.py` and `check_id_uniqueness.py` both fail when run as
+`python3 OW_tools/<tool>.py` because the repo root is not on `sys.path`. `naming_quality`
+works via `-m`; `check_id_uniqueness` does not work either way.
+
 ## Status
 
 - **Created**: 2026-09-17
