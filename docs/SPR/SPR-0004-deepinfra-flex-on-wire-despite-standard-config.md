@@ -471,3 +471,47 @@ correct and still verified to leave flex on the wire via the config key.
 mechanism the running binary actually reads before attributing a cost effect. This
 is the same error class as the build-hash classification false positive in
 SPR-0010 §9: inferring state instead of observing it.
+
+### C13. Latency observation under flex: no queueing, but the comparison is confounded (2026-09-18)
+
+**Operator-reported 60-minute latency window**, split by tier:
+
+| tier | window | workload character | p50 | p90 | p95 | mean |
+|---|---|---|---|---|---|---|
+| `normal` | first 20 min | **dominated by no-swarm** | 1.75s | 2.35s | 2.43s | 1.74s |
+| `flex` | last 40 min | **swarms only** (5 workers) | 5.0s | 9.0s | 9.5s | 5.57s |
+
+Flex is ~3x slower at p50. **This must not be read as a flex effect.** The two
+windows differ in workload, not only in tier: the flex window carried 163M tokens
+from five concurrent workers (long contexts, heavy prefill), while the normal
+window was mostly short single-session requests. Concurrency and prefill length
+raise latency with no tier involvement. The comparison is confounded.
+
+**Direct evidence on the actual SPR-0004 risk (queueing / rejection):**
+
+```
+grep -icE "status: 429|HTTP 429|engine_overloaded|rate.?limit" <log>   ->  0
+retries in the flex window                                            ->  0
+provider errors in the flex window                                    ->  0
+```
+
+There is **no evidence of flex queueing, throttling, or rejection**. The failure
+mode this SPR was written for — flex queueing for up to 10 minutes, or returning
+HTTP 429 `engine_overloaded` — **has not recurred**. Observed p95 is ~9.5s, four
+orders of magnitude short of the documented 10-minute worst case.
+
+**Assessment.** For background swarm workers, a 5s median is unproblematic: the
+work is parallel and nobody is waiting on any single request. The number to watch
+would be *interactive* latency, and this window cannot answer that, because the
+flex period contained no interactive turns. Note also that a tier attribution
+needs a controlled comparison: same workload, tier toggled. That has not been
+done.
+
+**To disentangle (if it matters):** run a no-swarm period at flex and compare
+against the no-swarm normal baseline above; or toggle tier mid-swarm and compare
+consecutive windows on the same workload.
+
+**Why this is recorded here:** C12's cost case for flex is only valid if flex does
+not reintroduce the latency failure. So far it has not, on the evidence available,
+but the latency figures in circulation are confounded and should not be quoted as
+a flex penalty.
