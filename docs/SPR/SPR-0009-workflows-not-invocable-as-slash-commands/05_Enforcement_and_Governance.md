@@ -100,7 +100,8 @@ Enforcement and security are different axes here and should not be conflated:
   the network posture is internal-only — MCP is a stdio child of the daemon in the
   same guest as the clones, the loopback governed DB, and the k3s cluster — there is
   no exposure boundary to enforce. The live questions are what the agent may read
-  (the model API is the only egress) and what it may do (governed DB writes, the
+  (the model API is the required egress, and outbound traffic is otherwise unfiltered)
+  and what it may do (governed DB writes, the
   clone's code, cluster reach).
 
 Two consequences for this document:

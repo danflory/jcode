@@ -84,16 +84,20 @@ MCP, the jcode daemon, the clones, the governed DB, and the cluster are **one tr
 domain**. There is no inter-component boundary left to defend, so the controls that
 matter are identity, read scope, and capability.
 
-### 4.1 Read scope, because the model API is the only egress
+### 4.1 Read scope, because egress is unrestricted
 
-The one unavoidable outbound channel is the HTTPS call to the model provider. It is
-also the only channel that carries content off the guest. Anything the agent can
-read can leave through it: clone files, DB rows, environment values, and cluster
-secrets.
+The one *required* outbound channel is the HTTPS call to the model provider. It is
+**not** the only possible one: the guest has no outbound filtering at all (§12
+item 3), so any process can open a connection to any destination the network
+allows. Measured: `iptables -S OUTPUT` policy is `ACCEPT`, `FORWARD` is `ACCEPT`,
+and the 13 `DROP`/`REJECT` rules present belong to k3s/kube-router network policies
+for pod traffic, not to host egress. Anything the agent can read can therefore leave
+either through the model API or through a direct connection: clone files, DB rows,
+environment values, and cluster secrets.
 
-Therefore the effective security question is **"what may the agent read?"**, not
-"who can reach the MCP server?". A hardening plan that does not answer the read
-question does not change the exfiltration surface at all.
+Therefore the effective security question is **"what may the agent read?"** plus
+"what may it connect to?", not "who can reach the MCP server?". A hardening plan
+that answers neither does not change the exfiltration surface at all.
 
 **This channel cannot be closed by network policy, and it should be stated plainly.**
 The upstream container design (`DAR-OW-096` research R11) specifies default-deny egress
@@ -264,6 +268,7 @@ These are real and verified; they are capability controls, not network controls:
 | No privilege separation | The agent is effective root (§5); the MCP child inherits that |
 | No env scrubbing by default | Denylist is narrow; jcode's `env` cannot restrict |
 | No read-scope policy | Read scope is the real egress control (§4.1) and is undefined |
+| No egress policy | `OUTPUT`/`FORWARD` are `ACCEPT`; nothing restricts where a process may connect (§12) |
 | No cluster-scope restriction | `kubectl` plus a root-readable kubeconfig puts the cluster in the agent's capability set |
 | No hash pinning | A modified clone's `OW_tools` executes unchecked (§4.3) |
 | Hooks are global-only | `pre_tool` is the only gating point and it is not per-project (`05_Enforcement_and_Governance.md` §3) |
@@ -282,7 +287,8 @@ None of these are network controls; all of them reduce capability or read scope:
    to block cluster-secret and credential-file reads from the agent loop.
 4. **Decide one drift mechanism** and implement it: 06's hash pinning is proposed and
    unbuilt, 07's generated index is weaker (see `08_Comparison_06_vs_07.md` §2a).
-5. **Define read scope explicitly**, since the model API is the only egress.
+5. **Define read scope and egress explicitly.** The model API is the required egress
+   channel, not the only possible one, since outbound traffic is unfiltered (§4.1, §12).
 
 ## 10. Verification list (S-series)
 
@@ -328,6 +334,10 @@ python3 temp/mcp/ow_createspr/smoke_test.py
   was not enumerated; §6 is a stub for that reason.
 - The cluster's own secret inventory (what a `kubectl`-capable agent could read) was
   not enumerated.
-- Whether the guest has outbound filtering beyond the model API was not tested.
+- **RESOLVED (2026-09-18).** Whether the guest has outbound filtering beyond the
+  model API is now measured: **it does not**. `iptables -S OUTPUT` is policy `ACCEPT`,
+  `FORWARD` is `ACCEPT`, and the 13 `DROP`/`REJECT` rules in the ruleset are k3s and
+  kube-router network-policy chains for pod traffic, not host egress. So the model API
+  is the required channel, not the only possible one (§4.1).
 
 **END.** This document changes no code and no configuration.

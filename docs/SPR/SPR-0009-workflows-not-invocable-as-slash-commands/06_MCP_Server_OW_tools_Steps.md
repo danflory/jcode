@@ -577,16 +577,20 @@ Evidence it produces, which resolves UNVERIFIED item 1 below:
 
 ## UNVERIFIED items
 
-1. **Python SDK compatibility**: Whether `fastmcp` or the `mcp` PyPI package
-   produces exactly the JSON-RPC 2.0 format that jcode's `McpToolDef`
-   (`crates/jcode-base/src/mcp/protocol.rs:134-140`) consumes is UNVERIFIED. The struct uses
-   `#[serde(rename = "inputSchema")]` — verify that the SDK's tool definition
-   output uses the same camelCase key.
+1. **RESOLVED (2026-09-18) — Python SDK compatibility is moot.** The built server uses
+   no SDK: it is stdlib Python emitting hand-written definitions, and jcode's client
+   accepted them (`Connected: 1/1`, §8). So the camelCase `inputSchema` requirement of
+   `McpToolDef` (`crates/jcode-base/src/mcp/protocol.rs:134-140`) is satisfied by the
+   format this document specifies, and whether `fastmcp` or the `mcp` package would also
+   satisfy it no longer gates anything.
 
-2. **`ow_actions.py` import path from a sibling package**: The import path
-   `from OW_tools.ow_actions import ow_register_ci` requires `OW_tools/` to be
-   on `sys.path`. Whether the MCP server can reliably import OW_tools without
-   a `pip install -e .` or `PYTHONPATH` manipulation is UNVERIFIED.
+2. **ANSWERED (2026-09-18) — it requires `sys.path` manipulation, and that works.**
+   The question was whether OW_tools can be imported without `pip install -e .` or
+   `PYTHONPATH`. The built server's dry-run path does exactly that and succeeds:
+   `sys.path.insert(0, str(project_root))` before importing
+   `OW_tools.praca_scaffold`, with `project_root` taken from the server's own argument or
+   environment (`temp/mcp/ow_createspr/server.py`). So the answer is yes, with in-process
+   `sys.path` insertion rather than packaging.
 
 3. **`execute()` function signature convention**: The discovery logic
    (`discover_cli.py:84-103`) checks for an `execute` function definition or
@@ -595,10 +599,12 @@ Evidence it produces, which resolves UNVERIFIED item 1 below:
    exact parameter mapping is UNVERIFIED without reading each module's
    `execute()` signature.
 
-4. **Project-root detection behavior**: `detect_project()` calls
-   `git rev-parse --show-toplevel` from CWD. When the MCP server is spawned by
-   jcode, the CWD is the project root (per the config), but whether `git`
-   resolves correctly in all worktree configurations is UNVERIFIED.
+4. **PARTIALLY RESOLVED (2026-09-18).** `detect_project()` calls
+   `git rev-parse --show-toplevel` from CWD. The built server sidesteps the question by
+   passing an explicit `OW_REPO_ROOT` and using it as the subprocess `cwd`, which was
+   verified against a real clone (`governed_db_reachable: true`, §8), and a bogus root is
+   reported rather than crashing. Still UNVERIFIED: behaviour under git worktrees, which
+   this server does not use.
 
 5. **`OW_tools/MANIFEST.json`**: No such file exists as of this writing. The
    generator step (Step 7) would need to either create one or compute hashes
