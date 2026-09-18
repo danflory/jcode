@@ -58,6 +58,41 @@ without an operator decision.
 | 4 | Define read scope / answer the credentials question | Decision | Credentials is an operator-declared stub that must be developed. The model-API egress channel cannot be closed by network policy and is the open security question. | `09_Security_Model.md` §6, §4.1 |
 | 5 | Pick one drift mechanism (hash pinning vs generated index) | Decision | 06 proposes hash pinning and never built it; 07 specifies a generated index with no hash. | `08_Comparison_06_vs_07.md` §2a |
 
+## Migration readiness (measured with Overwatch's own validator)
+
+Because these documents are destined for Overwatch, readiness was measured with that
+project's real tool rather than by inspection. From the Overwatch repo root:
+
+```bash
+python3 -m OW_tools.check_folder_frontmatter <this folder>
+```
+
+Observed on 2026-09-18: **22 violations, all FM-1/FM-2** on the 11 sub-documents —
+`parent is '' — must be an integer UDRS serial ID pointing to the anchor`, and
+`parent is '' but anchor ID is 'SPR-0009' — parent must match anchor's UDRS ID`.
+
+One further violation was found and **fixed**: `02_TP_Change_Report.md` declared
+`type: SPR.TP`, which the validator expects as `SPR.TP_CHANGE`. After the fix the count
+went 23 → 22 and no FM-3 remains.
+
+What this means for the migration:
+
+- **The anchor passes.** The validator accepted `id: SPR-0009` and did not flag the
+  anchor for `parent`.
+- **The only remaining gap is the parent link on each sub-document, and it cannot be
+  closed in this tree.** `parent` must be the anchor's integer UDRS serial id, which
+  does not exist until the anchor is registered in Overwatch's UDRS. This folder's
+  convention explicitly forbids fabricating UDRS ids, so leaving it open is correct
+  rather than incomplete.
+- **Closing it is the normal Overwatch flow**: register the anchor (`ow_write_ci`), then
+  backpatch `parent` on each sub-document
+  (`praca_scaffold backpatch-parent --dir <folder> --anchor-id <id>`), which is
+  createSPR2 Step 2.5/2.6.
+- **Control note.** The same validator reports
+  `Cannot detect artifact type from folder name: DAR-OW-096_...` for a native Overwatch
+  DAR folder, because it only recognizes `RFC-*`, `SPR-*`, and `CAR-*` prefixes. It is a
+  valid gate for SPR-shaped folders, not a general-purpose one.
+
 ## Status
 
 - **Created**: 2026-09-17

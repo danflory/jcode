@@ -9,7 +9,7 @@ author: operator
 created: 2026-09-17
 domain: ENGINEERING
 severity: Major
-type: SPR.TP
+type: SPR.TP_CHANGE
 version: "2026-09-17"
 ---
 
