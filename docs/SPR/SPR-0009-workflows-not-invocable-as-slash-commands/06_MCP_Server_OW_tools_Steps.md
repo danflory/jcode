@@ -301,6 +301,12 @@ and that changes to OW_tools require a regeneration step.
 Per the resolution order (`crates/jcode-base/src/mcp/protocol.rs:577-582`: `.jcode/mcp.json` → `.mcp.json`
 → `.claude/mcp.json`), the generated config goes in `.jcode/mcp.json`:
 
+> **Posture note.** These fields are selection and timeout controls, not exposure
+> controls. The MCP server is a stdio child of the daemon in the same guest as the
+> daemon, the clones, the loopback governed DB, and the k3s cluster, and it binds no
+> port. Security for this surface is about capability, read scope, and provenance,
+> not reachability: see `09_Security_Model.md`.
+
 ```json
 {
   "mcpServers": {

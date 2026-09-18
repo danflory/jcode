@@ -35,6 +35,7 @@ executed as a procedure. The proposed fix is a decision, not a survey.
 | `06_MCP_Server_OW_tools_Steps.md` | Steps | Build steps for a generated MCP server wrapping `OW_tools` Python entry points (an Option D instantiation), with registry/error/cwd contracts and the 8000-token exposure analysis |
 | `07_MCP_Delivery_Plan.md` | Plan | Hybrid delivery plan (Option A surface + Option D execution) for the 2-series, with the deterministic-vs-judgment boundary and a DAR/RFC/do/check pipeline |
 | `08_Comparison_06_vs_07.md` | Compare | How 06 and 07 relate: convergences, real divergences (hash pinning, exposure strategy), and what each resolves in the other |
+| `09_Security_Model.md` | Security | Full security treatment: internal-only network posture, single trust domain, capability and read scope, provenance, measured containment state, and the credentials stub |
 
 ## Status
 

@@ -86,9 +86,35 @@ same per-session/per-working-dir scoping principle already used for skills
 | Discovery of commands/tools | Enforced | client registry / MCP `tools/list` |
 | Argument substitution | Enforced | client-substituted body / MCP `arguments` (`protocol.rs:148`) |
 | Preconditions / ordering | Enforced | global `pre_tool` dispatcher keyed on `JCODE_HOOK_CWD` (`default_file.rs:596-600`; `lib.rs:798-801`) |
-| Governed source truth | Enforced | generated hash-pinned pointer + drift check (never a second source of truth) |
+| Governed source truth | Proposed, not in force | generated hash-pinned pointer + drift check (never a second source of truth); see §5 item 2 |
 
-## 5. UNVERIFIED items
+## 5. Relationship to the security model (`09_Security_Model.md`)
+
+Enforcement and security are different axes here and should not be conflated:
+
+- **Enforcement** (this document) is about *ordering and preconditions*: did the
+  workflow's steps run in the right order, with the right gates answered. Its
+  mechanism is the global `pre_tool` dispatcher, which is the only blocking point in
+  the agent loop.
+- **Security** (`09_Security_Model.md`) is about *capability and read scope*. Because
+  the network posture is internal-only — MCP is a stdio child of the daemon in the
+  same guest as the clones, the loopback governed DB, and the k3s cluster — there is
+  no exposure boundary to enforce. The live questions are what the agent may read
+  (the model API is the only egress) and what it may do (governed DB writes, the
+  clone's code, cluster reach).
+
+Two consequences for this document:
+
+1. The `pre_tool` dispatcher is the **only** available gate for both purposes. If a
+   read-scope policy is ever defined (§9 item 3 of the security model), it must be
+   implemented here, because jcode has no per-project hooks and no other blocking
+   point.
+2. The "governed source truth" row in §4 is currently a **proposal, not an
+   enforcement**: the hash-pinned pointer is unimplemented
+   (`grep -c SHA256 temp/mcp/ow_createspr/server.py` → 0). Until it exists, nothing
+   enforces that the executed `OW_tools` matches the reviewed one.
+
+## 6. UNVERIFIED items
 
 The exact env-var spelling and delivery of `JCODE_HOOK_CWD` to a spawned
 `pre_tool` process is asserted from the hook env-var documentation

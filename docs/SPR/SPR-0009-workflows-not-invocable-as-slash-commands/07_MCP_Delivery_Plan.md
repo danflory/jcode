@@ -49,15 +49,15 @@ Analysis findings that constrain the design:
   *client*; servers are separately spawned executables speaking the protocol over stdio.
 - **Two config scopes**: global (`~/.jcode/mcp.json`, plus Claude sources) and
   project-local (`.jcode/mcp.json`, `.mcp.json`, `.claude/mcp.json`), resolved against
-  the **session working directory**, not the daemon cwd (issue #420).
-- **Two process scopes**: `shared` servers pool daemon-global; non-shared servers are
+  the **session working directory**, not the jcode daemon cwd (issue #420).
+- **Two process scopes**: `shared` servers pool jcode-daemon-global; non-shared servers are
   spawned **per-session with the session cwd** as the child process cwd
   (`connect_in_dir`, `crates/jcode-base/src/mcp/client.rs:155-181`).
 - **Tools-only primitive**: MCP in jcode supports only `tools/list` and `tools/call`
   (`crates/jcode-base/src/mcp/protocol.rs:142, :148, :155`). No `prompts` or `resources`
   support (verified: 0 matches).
 - **Credentials are scrubbed by denylist, not allowlist**: the child **inherits the
-  daemon's environment** with a narrow set of sensitive keys removed, then has the
+  jcode daemon's environment** with a narrow set of sensitive keys removed, then has the
   per-server declared `env` added on top (`mcp_child_env`,
   `crates/jcode-base/src/mcp/client.rs:411-418`; `Command::envs` at `:176`, with no
   `env_clear` on this path). The denylist is
@@ -71,6 +71,14 @@ Analysis findings that constrain the design:
 - **No credentials leak by design**: providers are opted in per-server via declared
   `env`, so a server that needs a provider credential must be given it explicitly.
   That is a convenience property, not the isolation property the denylist implies.
+- **The network posture is internal-only, so exposure is not the security question.**
+  The MCP server is a stdio child of the jcode daemon, in the same guest as that daemon, the
+  clones, the governed DB (loopback `127.0.0.1:51728`) and the k3s cluster, with no
+  listener of its own. Transport security, inbound exposure, and config scope used as
+  a protection are therefore moot; the live questions are capability, read scope, and
+  provenance. Full treatment, including the measured containment state (effective
+  root via passwordless sudo, uncontained guest) and the credentials stub, is in
+  `09_Security_Model.md`. Nothing in this plan should be read as a network control.
 - **jcode has no slash-command registry**; MCP itself provides no user-typed `/name`
   surface. Option D (MCP-as-tool) thus **removes** the slash unless a command surface
   (Option A) is built on top.
@@ -127,9 +135,9 @@ index-then-load only if the catalog grows past roughly 45 tools, or if a workflo
 family outside the 2-series is folded in.
 
 The deferral mechanism itself is real and was confirmed behaviorally: setting
-`mcp_tools_token_threshold = 1` on a running daemon made the next session call
+`mcp_tools_token_threshold = 1` on a running jcode daemon made the next session call
 `mcp_search` then `mcp_call` instead of the direct tool, and restoring 8000 returned
-it to the direct call — same daemon, no restart.
+it to the direct call — same daemon, no restart (terminology: `09_Security_Model.md` §2.1).
 
 ## 5. Deterministic-vs-judgment boundary
 
@@ -250,7 +258,9 @@ for a workflow that writes governed state.
 | Opaque tool judgments (traceability loss) | Judgment stays on session model; tools return `evidence` notes |
 | Markdown↔tool drift after text improvements | Generated index + single-source contract; tool layer is canonical for args |
 | Schema done by guessing OW_tools real types | Derive from source: `--help` output and `ow_actions_*` signatures, as doc 06 §2 does for seven entry points; verify with the dry-run pass before M4 |
-| Credential leak into the MCP child | jcode scrubs only a narrow denylist (`*_API_KEY`, `*_ACCESS_TOKEN`, `*_AUTH_TOKEN`, five AWS/Azure/GCP names); the child inherits everything else, so the server must not assume its environment is clean |
+| Credential leak into the MCP child | jcode scrubs only a narrow denylist (`*_API_KEY`, `*_ACCESS_TOKEN`, `*_AUTH_TOKEN`, five AWS/Azure/GCP names); the child inherits everything else, so the server must not assume its environment is clean. See `09_Security_Model.md` §6 (stub, to be developed) |
+| No containment inside the sandbox | The agent is effective root (passwordless sudo, `lxd` group) in an uncontained KVM guest, so it can read cluster secrets and any credential file. "Internal-only" is a network property, not a privilege property: `09_Security_Model.md` §5 |
+| Unverified code provenance | The server executes the clone's own `OW_tools` with DB reach and no hash check; decide one drift mechanism before generating (`08_Comparison_06_vs_07.md` §2a) |
 
 ## 9. Open questions
 

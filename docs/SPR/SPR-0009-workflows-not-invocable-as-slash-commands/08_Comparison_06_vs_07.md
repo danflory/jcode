@@ -148,6 +148,12 @@ what makes the distinction explicit; the two documents do not conflict here.
 | Coverage | ✅ createSPR2 only | ✅ full 2-series |
 | Registration/scope analysis | ✅ resolved (stateless server → global + `shared: true`) | ✅ global-vs-project scoping documented |
 | Drift protection | ⚠️ proposed only (`OW_TOOLS_SHA256`, not implemented) | ⚠️ specified but weaker (generated index, no hash) |
+| Security posture | ❌ not treated (07 §3 carries the denylist finding) | ⚠️ partial: credential denylist noted, no containment analysis |
+
+Both documents predate the full security treatment in `09_Security_Model.md`, which
+supplies what neither had: the internal-only topology, the measured containment state
+(effective root, uncontained guest), the read-scope/egress analysis, and the
+credentials stub. Neither 06 nor 07 should be read as a security control.
 
 ## 7. Reconciliation: what to do next
 
@@ -165,6 +171,11 @@ what makes the distinction explicit; the two documents do not conflict here.
 5. **Derive schemas, don't guess them** (07 §6 RFC, corrected): every field should
    trace to a `--help` line or a real signature before generation, and every mutating
    tool should pass a dry-run sandbox pass before the live `createSPR` run.
+6. **Adopt `09_Security_Model.md` as the security authority** for this folder. In
+   particular, drop any framing that treats config scope or MCP transport as a
+   protection, and pick up its open items: privilege separation for the MCP child,
+   environment scrubbing, read-scope policy, and the credentials stub (§6) that must
+   be developed before the surface is generalized beyond this guest.
 
 ## 8. Verification list
 
