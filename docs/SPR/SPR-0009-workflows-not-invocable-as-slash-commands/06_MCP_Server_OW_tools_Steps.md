@@ -118,7 +118,7 @@ Python entry point and translate the result into MCP `content[].text`.
 
 | OW_tools thing | Reason |
 |:---------------|:-------|
-| `ow_sign` (FIDO2/YubiKey) | Requires interactive hardware touch + PIN; MCP has no interactive input channel. jcode's `tools/call` expects a non-interactive JSON-RPC exchange (`protocol.rs:148`). |
+| `ow_sign` (FIDO2/YubiKey) | Requires interactive hardware touch + PIN; MCP has no interactive input channel. jcode's `tools/call` expects a non-interactive JSON-RPC exchange (`crates/jcode-base/src/mcp/protocol.rs:148`). |
 | `gemini_change_approve/apply.py` | Requires `sudo` and operator approval; the MCP server runs as the agent, not as root. |
 | `daemon_contract` health checks | These are monitoring probes, not invocable procedures. An MCP tool wrapping them would be redundant with the existing sentinel file (`cat .contract_status`). |
 | `db_write.py` subcommands | This is the **universal write dispatcher** with 20+ command families. Exposing every subcommand as a separate tool creates explosion. Better: expose a single `mcp__ow_tools__db_write` with a `command` discriminator parameter, or pick the 3-5 most-used subcommands and leave the rest behind `mcp_search`/`mcp_call`. |
@@ -148,12 +148,12 @@ ow_tools_mcp_server/
 ### Step 2 — Implement stdio transport
 
 jcode's MCP client supports only `stdio` transport
-(`protocol.rs:192-207`: `command` + `args` for stdio servers). The server MUST:
+(`crates/jcode-base/src/mcp/protocol.rs:192-207`: `command` + `args` for stdio servers). The server MUST:
 - Read JSON-RPC 2.0 requests from stdin, line-delimited.
 - Write JSON-RPC 2.0 responses to stdout.
 - Log diagnostics to stderr (which jcode captures and surfaces in error cases).
 - NOT use HTTP, SSE, or WebSocket transport (jcode skips non-stdio entries at
-  load time — `protocol.rs:207`).
+  load time — `crates/jcode-base/src/mcp/protocol.rs:207`).
 
 PROPOSED implementation: use the `fastmcp` or `mcp` Python SDK which handles
 the stdio transport and JSON-RPC framing. The `FastMCP` dev server with stdio
@@ -223,7 +223,7 @@ argparse re-entry.
 
 ### Step 5 — Error and exit-code surfacing
 
-OW_tools tools use exit codes (see `ci_lifecycle/RUNBOOK.md:31-35`):
+OW_tools tools use exit codes (see `OW_tools/ci_lifecycle/RUNBOOK.md:31-35`):
 - `0` = success
 - `1` = database or unknown error
 - `2` = validation error (e.g. illegal EFSM transition)
@@ -243,7 +243,7 @@ with the exception message.
 ### Step 6 — cwd scoping
 
 jcode spawns MCP servers at project root
-(`protocol.rs:577-582`: `load_project_locals` resolves per working directory).
+(`crates/jcode-base/src/mcp/protocol.rs:577-582`: `load_project_locals` resolves per working directory).
 The OW_tools Python code auto-detects project context via `detect_project()`
 (`TOOL_STANDARDS.md:22-39`), which calls `git rev-parse --show-toplevel` from
 CWD. The MCP server MUST either:
@@ -278,7 +278,7 @@ and that changes to OW_tools require a regeneration step.
 
 ## 4. Registration — proposed `.jcode/mcp.json` snippet
 
-Per the resolution order (`protocol.rs:577-582`: `.jcode/mcp.json` → `.mcp.json`
+Per the resolution order (`crates/jcode-base/src/mcp/protocol.rs:577-582`: `.jcode/mcp.json` → `.mcp.json`
 → `.claude/mcp.json`), the generated config goes in `.jcode/mcp.json`:
 
 ```json
@@ -302,9 +302,9 @@ Per the resolution order (`protocol.rs:577-582`: `.jcode/mcp.json` → `.mcp.jso
 
 - `"shared": false` — the server maintains DB connections and cwd-dependent
   state, so it must not be shared across sessions
-  (`protocol.rs:199-203`: `shared` defaults to `true` for stateless API wrappers;
+  (`crates/jcode-base/src/mcp/protocol.rs:199-203`: `shared` defaults to `true` for stateless API wrappers;
   stateful servers should not be shared).
-- `command: "python3"` — stdio transport per `protocol.rs:192-207`.
+- `command: "python3"` — stdio transport per `crates/jcode-base/src/mcp/protocol.rs:192-207`.
 - The env var `OW_TOOLS_SHA256` is the hash-pinned pointer; `OW_TOOLS_PROJECT_ROOT`
   informs the server which project it serves.
 
@@ -445,7 +445,7 @@ Evidence it produces, which resolves UNVERIFIED item 1 below:
 
 - The server is hand-rolled stdlib Python, no `fastmcp`/`mcp` SDK. Its
   `tools/list` replies use the camelCase `inputSchema` key, which is what
-  `McpToolDef` requires (`protocol.rs:134-140`), and jcode accepted it.
+  `McpToolDef` requires (`crates/jcode-base/src/mcp/protocol.rs:134-140`), and jcode accepted it.
 - Registered in `~/.jcode/mcp.json` under `mcpServers.ow_createspr`, then
   `{"action": "reload"}` reported `Connected: 1/1` and listed all 11 tools.
   So jcode's client consumes a stdlib server's definitions directly, and the
@@ -460,7 +460,7 @@ Evidence it produces, which resolves UNVERIFIED item 1 below:
 
 1. **Python SDK compatibility**: Whether `fastmcp` or the `mcp` PyPI package
    produces exactly the JSON-RPC 2.0 format that jcode's `McpToolDef`
-   (`protocol.rs:134-140`) consumes is UNVERIFIED. The struct uses
+   (`crates/jcode-base/src/mcp/protocol.rs:134-140`) consumes is UNVERIFIED. The struct uses
    `#[serde(rename = "inputSchema")]` — verify that the SDK's tool definition
    output uses the same camelCase key.
 
