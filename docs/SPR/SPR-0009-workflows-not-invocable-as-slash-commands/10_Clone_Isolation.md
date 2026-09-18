@@ -177,6 +177,14 @@ scoping. Where it differs: its boundary is external (DB RBAC plus a crypto serve
 because the container has no internal one, whereas this document's host-layer options
 rely on the kernel's own separation.
 
+## 3.7 The model this feeds
+
+The vocabulary that sits above these options (project VM, workspace, lease, entitlement,
+and availability as idle-and-quiescent) is recorded in `13_Model_and_Vocabulary.md`,
+together with the correction that the unit is a VM per **project** with leases inside it,
+not a VM per entitlement. This document supplies the mechanics for one workspace; 13
+supplies the model that arranges them.
+
 ## 4. Comparison
 
 | Dimension | Option A (per-clone home) | Option B (per-user) |

@@ -39,8 +39,9 @@ executed as a procedure. The proposed fix is a decision, not a survey.
 | `10_Clone_Isolation.md` | Research | Running parallel feature work without cross-talk: per-clone home vs per-user isolation, with measured costs and the two footguns |
 | `11_Overwatch_Backup.md` | Research | Backup intent vs observed state: the in-guest 49 GB `backups/` directory, the host HDD mount that already exists, and the migration risks |
 | `12_Sandbox_Listeners.md` | Research | The erroneous postgres (installed in error, to be deleted) and the four wildcard binds, with a rule for when a wildcard bind is justified and the measured boundary check |
+| `13_Model_and_Vocabulary.md` | Research | The model and its vocabulary: project VM, workspace (uid + clone + jcode home + socket), lease, entitlement, availability as idle and quiescent, the DB placement question, and identity versus entitlement |
 
-**Placement note (operator declaration).** Documents 10, 11 and 12 are topically outside
+**Placement note (operator declaration).** Documents 10 through 13 are topically outside
 SPR-0009. They are recorded in this folder as research by explicit operator decision,
 on the understanding that they migrate to Overwatch later. The inconsistency is
 intentional, not a folder-convention error.
