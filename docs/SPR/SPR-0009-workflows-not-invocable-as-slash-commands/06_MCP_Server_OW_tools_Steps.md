@@ -292,14 +292,26 @@ Per the resolution order (`crates/jcode-base/src/mcp/protocol.rs:577-582`: `.jco
       ],
       "env": {
         "OW_TOOLS_SHA256": "<hash-of-governed-ow_tools-manifest>",
-        "OW_TOOLS_PROJECT_ROOT": "${cwd}"
+        "OW_TOOLS_PROJECT_ROOT": "${OW_TOOLS_PROJECT_ROOT:-/abs/path/to/overwatch}"
       },
+      "timeout_secs": 120,
       "shared": false
     }
   }
 }
 ```
 
+- **Environment expansion is `${VAR}` and `${VAR:-default}` only, resolved
+  against the process environment** (`crates/jcode-base/src/mcp/protocol.rs:283-296`,
+  applied to `command`, `args`, `env` values, `url`, and `headers` at `:350-373`).
+  There is no `${cwd}` magic: an unresolved name is left in place literally and
+  jcode logs `MCP: Server '<name>' references unset environment variable '<var>'`
+  (`crates/jcode-base/src/mcp/protocol.rs:389-395`). So use a real variable, a
+  literal absolute path, or a `${VAR:-default}` fallback as shown above.
+- `"timeout_secs"` — per-request reply budget for `tools/call`, `tools/list`, and
+  `initialize`; absent means 30s
+  (`crates/jcode-base/src/mcp/protocol.rs:225-230`). Governed DB calls can exceed
+  30s, so raise it.
 - `"shared": false` — the server maintains DB connections and cwd-dependent
   state, so it must not be shared across sessions
   (`crates/jcode-base/src/mcp/protocol.rs:199-203`: `shared` defaults to `true` for stateless API wrappers;
@@ -310,12 +322,41 @@ Per the resolution order (`crates/jcode-base/src/mcp/protocol.rs:577-582`: `.jco
 
 ---
 
-## 5. Verification steps (for a future implementer to run)
+## 5. Verification steps
 
-These commands prove the server starts and one tool call returns a real result.
-They are listed here for documentation; **do NOT execute them now**.
+Two sets. **A** runs today against the working implementation described in §8.
+**B** is the same shape for the generated `ow_tools_mcp_server`; those names
+will not resolve until it exists.
 
-### 5.1 Prove the server starts
+### A. Runnable now (server name `ow_createspr`)
+
+```bash
+# 1. Server starts and answers tools/list with real schemas.
+#    jcode's client speaks NEWLINE-DELIMITED JSON
+#    (crates/jcode-base/src/mcp/client.rs:54, :198), not Content-Length framing.
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  | python3 /home/d/dev_env/jcode/temp/mcp/ow_createspr/server.py
+
+# 2. A real tool call returns a real result (read-only DB probe).
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ow_db_probe","arguments":{}}}' \
+  | python3 /home/d/dev_env/jcode/temp/mcp/ow_createspr/server.py
+
+# 3. jcode registers and connects the server (from any session).
+#    Registered in ~/.jcode/mcp.json; the mcp tool's reload action reports it.
+```
+
+Observed for command 1: `result.tools` lists 11 tools, each with an `inputSchema`.
+Observed for command 2: `content[0].text` is a JSON object with
+`"governed_db_reachable": true` and `"status": "ok"`.
+Observed for command 3: `Reloaded MCP config. Connected: 1/1` plus all 11 names.
+
+### B. Same shape for the generated server (not runnable yet)
 
 ```bash
 # Verify the server responds to tools/list
@@ -327,11 +368,11 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
 Expected output: a JSON-RPC response with a `result.tools` array containing at
 least one tool definition.
 
-### 5.2 Prove one tool call returns a real result
-
 ```bash
-# Call the next_number tool (peek mode, no allocation)
-echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ow_tools__next_number","arguments":{"category":"SPR","peek":true}}}' \
+# Call the next_number tool in peek mode (allocates nothing).
+# Tool names are `mcp__<server>__<tool>`, so the server name already namespaces
+# them; do not also bake an `ow_tools__` prefix into the tool name.
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"next_number","arguments":{"category":"SPR","peek":true}}}' \
   | python3 -m ow_tools_mcp_server.server \
   | python3 -m json.tool
 ```
@@ -339,25 +380,28 @@ echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ow_tools__
 Expected output: a JSON object with `content[0].text` containing an integer
 (the current max SPR number — never creates a new one in peek mode).
 
-### 5.3 Prove jcode registers the server
-
 ```bash
-# From a project root that has the .jcode/mcp.json
-jcode run 'list all available MCP tools' --trace
-```
-
-Expected: the output includes tool names starting with `mcp__ow_tools__`.
-
-### 5.4 Prove drift detection
-
-```bash
-# Tamper the hash and verify the server refuses
+# Tamper the pinned hash and confirm the server refuses.
 OW_TOOLS_SHA256=deadbeef \
-  echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ow_tools__next_number","arguments":{"category":"SPR"}}}' \
+  echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"next_number","arguments":{"category":"SPR"}}}' \
   | python3 -m ow_tools_mcp_server.server
 ```
 
 Expected: `isError: true` with a message about hash mismatch / regenerate required.
+
+### 5.5 End-to-end acceptance (the check that settles it)
+
+A tool list and a raw JSON-RPC call prove the server is correct in isolation.
+They do not prove jcode's agent loop can reach it. Run a real session and confirm
+the model invokes the tool through jcode's client:
+
+```bash
+jcode run --no-update --socket /run/user/1000/jcode-mcp-check.sock \
+  'There is an MCP server named ow_createspr. Call its db probe tool and print the raw JSON result verbatim. Do nothing else.'
+```
+
+Observed on 2026-09-18: the transcript shows `[mcp__ow_createspr__ow_db_probe]`
+and the result contains `"governed_db_reachable": true`, exit 0.
 
 ---
 
@@ -366,7 +410,36 @@ Expected: `isError: true` with a message about hash mismatch / regenerate requir
 jcode's `[tools] mcp_tools_token_threshold` defaults to 8000
 (`crates/jcode-base/src/config.rs:665`). When estimated MCP tool definitions
 exceed this threshold in auto mode, the client swaps to the `mcp_search` /
-`mcp_call` deferred surface (`turn_execution.rs:519-529`).
+`mcp_call` deferred surface
+(`crates/jcode-app-core/src/agent/turn_execution.rs:519-529`).
+
+The estimate is per tool: `len(json({name, description, input_schema})) / 4`,
+summed (`crates/jcode-message-types/src/lib.rs:26-65`).
+
+### Measured cost of the §8 implementation
+
+Measured on 2026-09-18 by serializing the live 11-tool `tools/list` reply with
+that exact formula:
+
+| Tool | Tokens |
+|:-----|-------:|
+| `ow_createspr2_plan` | 65 |
+| `ow_db_probe` | 133 |
+| `ow_resolve_parent` | 153 |
+| `ow_query_ci` | 193 |
+| `ow_update_author` | 174 |
+| `ow_scaffold_spr` | 286 |
+| `ow_backpatch_parent` | 168 |
+| `ow_register_subdocs` | 171 |
+| `ow_upsert_praca` | 186 |
+| `ow_populate_success_criteria` | 191 |
+| `ow_frontmatter_sweep` | 124 |
+| **Total (11 tools)** | **1,844** |
+
+So the real per-tool cost is ~168 tokens, and 11 tools sit comfortably under the
+threshold: mode stays eager and the model sees the tools directly. This is why
+the §5.5 acceptance run could call `mcp__ow_createspr__ow_db_probe` by name with
+no `mcp_search` round-trip.
 
 ### Tools worth eager exposure (below threshold)
 
@@ -375,21 +448,22 @@ without a search round-trip:
 
 | Tool | Rationale |
 |:-----|:----------|
-| `mcp__ow_tools__next_number` | Called in almost every workflow (allocating IDs for new documents) |
-| `mcp__ow_tools__ci_transition` | Core EFSM lifecycle — used in every CI action |
-| `mcp__ow_tools__register_ci` | Entry point for bringing new CIs under governance |
-| `mcp__ow_tools__resolve_ci` | Universal CI lookup — discoverability |
-| `mcp__ow_tools__prior_art` | Frequently used for research phase |
+| `next_number` | Called in almost every workflow (allocating IDs for new documents) |
+| `ci_transition` | Core EFSM lifecycle — used in every CI action |
+| `register_ci` | Entry point for bringing new CIs under governance |
+| `resolve_ci` | Universal CI lookup — discoverability |
+| `prior_art` | Frequently used for research phase |
 
-Estimated serialized definition size: ~3,000 tokens (conservative). Well under
-the 8,000 threshold.
+Projected at the measured ~168 tokens per tool: ~840 tokens for these five, not
+the ~3,000 this document originally estimated. Well under the 8,000 threshold.
 
 ### Why the large fan-out should stay deferred
 
 If all ~50 D33 action functions + ~10 CLI tools were exposed eagerly:
 
-- Estimated definitions: 60 tools × ~150 tokens each ≈ 9,000 tokens (over the
-  threshold, triggering auto-deferral anyway).
+- Projected definitions: 60 tools × ~168 tokens each ≈ 10,100 tokens (over the
+  threshold, triggering auto-deferral anyway). Using the measured per-tool cost
+  rather than the earlier ~150 guess.
 - Parameter schema variety is high (numbers, strings, optional structs). The
   `input_schema` values inflate the estimate.
 - Many tools are rarely used (e.g. `ow_dump_schema`, `ow_list_dimensions`,
@@ -400,7 +474,8 @@ If all ~50 D33 action functions + ~10 CLI tools were exposed eagerly:
 PROPOSED: Eagerly expose the 5-7 most common tools; leave the remaining ~50
 behind the deferred surface. If a tool is called often enough to warrant
 promotion, move it to the eager list in the generator config. This matches the
-intent of the threshold mechanism (`turn_execution.rs:519-529`).
+intent of the threshold mechanism
+(`crates/jcode-app-core/src/agent/turn_execution.rs:519-529`).
 
 ---
 
