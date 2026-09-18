@@ -515,3 +515,40 @@ consecutive windows on the same workload.
 not reintroduce the latency failure. So far it has not, on the evidence available,
 but the latency figures in circulation are confounded and should not be quoted as
 a flex penalty.
+
+### C13a. Transport-level latency comparison, standard vs flex (2026-09-18)
+
+C13 flagged that the dashboard percentiles are confounded by workload. A less
+confounded measure is available directly from the logs: the
+`HTTP connection established in <n>ms` line, which is the connect-and-first-response
+phase — precisely where flex queueing would manifest. Binning samples at the
+moment flex was applied (local 16:25):
+
+| window | n | min | p50 | p90 | p95 | max |
+|---|---|---|---|---|---|---|
+| BEFORE flex (standard) | 121 | 123ms | **1230ms** | 3611ms | **5186ms** | 8452ms |
+| AFTER flex | 375 | 486ms | **1975ms** | 4165ms | **5238ms** | 10259ms |
+
+**Findings:**
+
+- **The tail is unchanged.** p95 is 5186ms → 5238ms, a 1% difference. The
+  maximum barely moved (8.45s → 10.3s). If flex were queueing, the tail is
+  exactly where it would show, and it does not.
+- **The median rose 1.61x** (1230ms → 1975ms), i.e. **+~0.75s absolute**. That is
+  real but small, and the flex window also carried ~3x the sample volume (375 vs
+  121) including heavy swarm traffic, so part of it is load rather than tier.
+- **No pathological queueing.** Only **2** flex samples exceeded 10s and **zero**
+  exceeded 60s. The 10-minute worst case this SPR was written about does not
+  appear at all.
+
+**Assessment.** This supersedes the confounded dashboard comparison for the
+purpose of asking "does flex queue?". Best current answer: **flex adds roughly
+0.75s to the median transport time and leaves the tail essentially untouched.**
+For background swarm workers that is immaterial. It is still not a clean
+controlled experiment — the two windows differ in load — but the tail-invariance
+result is robust to that, because added load would be expected to worsen the tail
+too, and it did not.
+
+**Method note:** reproduce with the `HTTP connection established in <n>ms` lines,
+binned by timestamp relative to the tier change. Prefer this over dashboard
+percentiles, which blend workload classes into one series.
