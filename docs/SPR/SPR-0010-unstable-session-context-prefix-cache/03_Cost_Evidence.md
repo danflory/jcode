@@ -203,3 +203,39 @@ the old ordering (`Date`/`Time` before `OS`) and version `572f2eb0d`.
 
 Classify by the **context block ordering** (does `Date:` appear after `OS:`), not
 by a substring match on the file. Anything else reintroduces this error.
+
+## 10. Reusable measurement: `scripts/cache_hit_report.py`
+
+The role-split method in §3 and §8 is now a committed script, so the post-fix
+figure is one command away once traffic accumulates:
+
+```bash
+python3 scripts/cache_hit_report.py
+```
+
+It reports cache hit rate by era (pre/post-fix), role (root/child), and model,
+with an explicit warning when the post-fix child sample is too small to read as a
+trend (threshold: 200 turns).
+
+It encodes both measurement traps found during this investigation:
+
+- **Classify by context-block ordering, not by build-hash substring.** Searching
+  a session file for the build hash yields false positives (the hash appears in
+  tool output and metadata), which is how two pre-fix sessions were briefly
+  misread as 97.6% "post-fix" results (§9).
+- **Subtract cached from total input.** `token_usage.input_tokens` is the total,
+  with `cache_read_input_tokens` a subset; treating them as disjoint
+  double-counts input and roughly halves the apparent hit rate (§5).
+
+First run (2026-09-18, host) — post-fix sample is still tiny, so it is recorded
+as provisional, not as a result:
+
+| era | role | turns | hit% |
+|---|---|---|---|
+| pre-fix | child | 2653 | 88.2% |
+| pre-fix | root | 5538 | 79.6% |
+| POST-FIX | child | **13** | 88.2% (provisional) |
+| POST-FIX | root | 3 | 98.3% (provisional) |
+
+The post-fix worker figure cannot yet be distinguished from the pre-fix baseline;
+that is the measurement still outstanding (V-4 second half).
