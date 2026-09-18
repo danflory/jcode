@@ -298,6 +298,40 @@ fn test_session_context_includes_time_timezone_and_system_info() {
     assert!(!context.contains("Git:"));
 }
 
+/// SPR-0010: the session context is the leading provider-visible content, so it
+/// is what prompt-prefix caching matches on. A volatile field placed ahead of a
+/// stable one truncates the shared prefix between any two sessions and silently
+/// disables cache reuse for the rest of the request. Pin the ordering.
+#[test]
+fn test_session_context_orders_volatile_fields_last() {
+    let context = build_session_context(None);
+
+    // Volatile across sessions (second-resolution / daily / tree-state).
+    let volatile_markers = ["Time: ", "Date: ", "Timezone: "];
+
+    // Stable across sessions on the same machine, build, and working directory.
+    let stable_markers = ["OS: ", "Architecture: ", "Jcode version: "];
+
+    let first_volatile = volatile_markers
+        .iter()
+        .filter_map(|marker| context.find(marker))
+        .min()
+        .expect("context should contain at least one volatile field");
+    let last_stable = stable_markers
+        .iter()
+        .filter_map(|marker| context.find(marker))
+        .max()
+        .expect("context should contain at least one stable field");
+
+    assert!(
+        first_volatile > last_stable,
+        "SPR-0010: every volatile field must come after every stable field in \
+         the session context, or the cacheable prefix ends before them. \
+         first volatile at {first_volatile}, last stable at {last_stable}.\n\
+         --- context ---\n{context}"
+    );
+}
+
 #[test]
 fn session_datetime_uses_the_supplied_local_date_time_and_offset() {
     use chrono::TimeZone;

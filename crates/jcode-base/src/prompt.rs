@@ -699,7 +699,13 @@ fn build_selfdev_prompt_for_context(context: SelfDevProductContext) -> String {
 pub fn build_session_context(working_dir: Option<&Path>) -> String {
     let mut lines = vec!["# Session Context".to_string()];
 
-    lines.extend(session_datetime_lines());
+    // STABLE BLOCK. This block is the leading provider-visible content, so it is
+    // what prompt-prefix caching matches on. Keep every field below identical
+    // across sessions on the same machine, build, and working directory, and do
+    // not move any volatile field ahead of a stable one: a prefix match ends at
+    // the first differing byte, so one volatile line early here silently
+    // disables cache reuse for the entire remainder of the request.
+    // See docs/SPR/SPR-0010-unstable-session-context-prefix-cache/.
     lines.push(format!("OS: {}", std::env::consts::OS));
     lines.push(format!("Architecture: {}", std::env::consts::ARCH));
     lines.push(format!(
@@ -719,6 +725,11 @@ pub fn build_session_context(working_dir: Option<&Path>) -> String {
             lines.push(git_info);
         }
     }
+
+    // VOLATILE BLOCK — must stay last. These differ between any two sessions
+    // (and `Git:` between any two tree states), so anything placed after them
+    // would lose its cache-prefix contribution.
+    lines.extend(session_datetime_lines());
 
     lines.join("\n")
 }
