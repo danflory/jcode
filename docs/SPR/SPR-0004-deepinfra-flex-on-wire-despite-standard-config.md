@@ -292,3 +292,62 @@ directly at this stage.
   `rm -rf /tmp/jcode-debug-runtime /tmp/jcode-debug-data /tmp/jcode-debug.sock`.
 - Current source: debug lines + report committed as `a30fc06b3`, plus this
   P1 finding (next commit).
+
+---
+
+## C12. OPERATOR REVERSAL: tier flipped back to flex (2026-09-18)
+
+**What:** reversed the SPR-0004 end state. `[provider] openai_service_tier` changed
+from `"standard"` to `"flex"` on **both** machines:
+
+| Machine | Before | After | Backup |
+|---|---|---|---|
+| Host `~/.jcode/config.toml` | `standard` | `flex` | `~/.jcode/config.toml.bak-flex-1789763138` |
+| Sandbox `~/.jcode/config.toml` | `priority` | `flex` | `~/.jcode/config.toml.bak-flex-1789763139` |
+
+**Operator rationale (2026-09-18):** "I did have workers at flex yesterday and it
+worked fine. I need to attempt flex again" — cost reduction outweighs the latency
+risk documented above, and the operator is monitoring actual spend directly.
+
+**Note on the sandbox pre-state:** the sandbox was found on `priority`, not
+`standard`. `priority` bills at **1.5x**, i.e. *more* than standard, so it was a
+latent cost defect regardless of the flex decision. It is now `flex` (0.8x).
+
+**Mechanism used:** the config key, *not* the env var. Commit `4804febd9` (C10
+above) hardened the code so the configured tier is applied LAST and wins over
+`~/.config/jcode/<profile>.env` `JCODE_OPENAI_EXTRA_BODY`. The sandbox still
+carries the stale `EXTRA_BODY={"service_tier":"flex"}` line in its
+`deepinfra.env`; it is now inert and agrees with the configured value.
+
+**Verification (host, on the wire):**
+```
+[16:25:44] Service tier: sending service_tier="flex" in request body
+[16:25:44] REQUEST SERVICE_TIER: "flex" (model: deepseek-ai/DeepSeek-V4.1-Flash, ...)
+```
+A real request completed in ~4.4s with no queueing. A **swarm worker** request was
+also verified to carry flex:
+```
+[16:32:08.795] [ses:session_rabbit_17897|...] Service tier: sending service_tier="flex" in request body
+```
+So workers, not just the coordinator, inherit the tier.
+
+**Sandbox verification: PENDING.** The sandbox binary was stale
+(`v0.84.11-dev (4620e42bc)`, Sep 15) and lacks the SPR-0003 tier instrumentation
+entirely (`REQUEST SERVICE_TIER` appears zero times in its log despite successful
+requests). It also predates the `4804febd9` hardening, so on that machine the
+config key did not necessarily win; the env `extra_body` line was the operative
+mechanism. A rebuild+install to the current `dev` (commit `103d9d05a`) is in
+progress to resolve both the instrumentation gap and the missing SPR-0010 cache
+fix.
+
+**Undo (either machine):**
+- Host: `cp ~/.jcode/config.toml.bak-flex-1789763138 ~/.jcode/config.toml`
+- Sandbox: `cp ~/.jcode/config.toml.bak-flex-1789763139 ~/.jcode/config.toml`
+- Or set `openai_service_tier = "standard"` (omit the field) to restore the
+  SPR-0004 end state.
+
+**Effect on the standing rule:** the 2026-09-16 rule "Standard tier is mandatory.
+Flex must never be sent" is **suspended by operator decision of 2026-09-18**, not
+retracted as a finding. The latency evidence above still stands; if flex queueing
+recurs, the undo path restores standard in one line. Revisit if observed latency
+degrades.
