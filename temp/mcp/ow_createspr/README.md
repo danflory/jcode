@@ -75,9 +75,16 @@ defaults to 30s (`crates/jcode-base/src/mcp/protocol.rs:229`); the snippet
 raises it to 120s because governed DB calls can be slow. Only stdio
 (command-based) servers are supported (`:190`).
 
-After installing, restart jcode so the client reconnects. There is no `jcode mcp`
-subcommand in this build (`jcode --help` lists none), so confirm connection from
-a session (the tools appear as `mcp__ow_createspr__*`).
+`shared` is `true` here, unlike the `shared: false` that SPR-0009's 06 build
+steps recommend for *stateful* servers: this server keeps no per-session state
+(every call shells out with an explicit `OW_REPO_ROOT` and cwd), so sharing one
+process across sessions is safe and avoids a spawn per session.
+
+After installing, a reload is enough; verified on 2026-09-18, the `mcp` tool's
+reload action reported `Connected: 1/1` and listed all 11 tools without a
+restart. There is no `jcode mcp` subcommand in this build (`jcode --help` lists
+none), so confirm the connection from a session, where the tools appear as
+`mcp__ow_createspr__*`.
 
 ## Environment
 
