@@ -309,9 +309,12 @@ from `"standard"` to `"flex"` on **both** machines:
 worked fine. I need to attempt flex again" — cost reduction outweighs the latency
 risk documented above, and the operator is monitoring actual spend directly.
 
-**Note on the sandbox pre-state:** the sandbox was found on `priority`, not
-`standard`. `priority` bills at **1.5x**, i.e. *more* than standard, so it was a
-latent cost defect regardless of the flex decision. It is now `flex` (0.8x).
+**Note on the sandbox pre-state (CORRECTED -- see C12c):** the sandbox *config*
+read `priority`, not `standard`. An earlier revision of this entry claimed that
+billed at 1.5x and was therefore a latent cost defect. **That claim was wrong**
+and is retracted: the sandbox binary then in use predated the config-passthrough
+code, so the key was inert. See C12c for the evidence. The effective tier was
+`flex`, supplied by the env var.
 
 **Mechanism used:** the config key, *not* the env var. Commit `4804febd9` (C10
 above) hardened the code so the configured tier is applied LAST and wins over
@@ -431,3 +434,40 @@ hardening and the env var was operative.
 **Undo:** `cp ~/.config/jcode/deepinfra.env.bak-stale-extra-body-<epoch> ~/.config/jcode/deepinfra.env`
 then `systemctl --user restart jcode-serve.service`. (Not recommended: the line
 is redundant with the config and its comment is false.)
+
+### C12c. CORRECTION: sandbox was already on flex; the `priority` config key was inert (2026-09-18)
+
+**Retraction.** C12 stated the sandbox "was found on `priority` ... it was a
+latent cost defect regardless of the flex decision," implying 1.5x billing. That
+is **wrong**. Verified against the repository:
+
+```
+git merge-base --is-ancestor 4620e42bc ad2c923f5   -> YES  (old binary predates SPR-0003)
+git show 4620e42bc:.../openrouter_provider_impl.rs | grep -c openai_service_tier  -> 0
+git show 4620e42bc:.../openrouter_sse_stream.rs    | grep -c "REQUEST SERVICE TIER" -> 0
+```
+
+Commit dates: `4620e42bc` Sep 14 10:28, `ad2c923f5` (SPR-0003, config passthrough)
+Sep 15 21:01, `4804febd9` (tier applies last) Sep 15 23:55.
+
+The sandbox was running `v0.84.11-dev (4620e42bc)`, which **did not read
+`[provider] openai_service_tier` at all** (the passthrough did not exist yet) and
+had no tier instrumentation. Its `openai_service_tier = "priority"` was therefore
+**inert**, and the effective tier came from the env var
+`JCODE_OPENAI_EXTRA_BODY={"service_tier":"flex"}` -- i.e. the sandbox was sending
+**flex all along**.
+
+**Corrected conclusion:** there was **no 1.5x billing defect** on the sandbox. The
+real defect was *configuration incoherence*: a config key that disagreed with the
+operative env var, on a binary too old to read the key, with a comment asserting
+the opposite of the current code. It was fragile and misleading, but it was not
+costing extra.
+
+**What this does NOT change:** the sandbox did lack the SPR-0010 cache fix and the
+tier instrumentation (C12a), and C12b's removal of the stale env line is still
+correct and still verified to leave flex on the wire via the config key.
+
+**Lesson:** a config *value* is not evidence of runtime behaviour. Confirm which
+mechanism the running binary actually reads before attributing a cost effect. This
+is the same error class as the build-hash classification false positive in
+SPR-0010 §9: inferring state instead of observing it.
