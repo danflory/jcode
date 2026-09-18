@@ -433,6 +433,27 @@ proper route is:
 
 ---
 
+## 8. Related working implementation (2026-09-18)
+
+A narrower, real instantiation of this design exists and has been verified
+against jcode's own client: `temp/mcp/ow_createspr/server.py` implements the
+createSPR2 workflow (not the full OW_tools fan-out) as 11 tools over stdio.
+
+Evidence it produces, which resolves UNVERIFIED item 1 below:
+
+- The server is hand-rolled stdlib Python, no `fastmcp`/`mcp` SDK. Its
+  `tools/list` replies use the camelCase `inputSchema` key, which is what
+  `McpToolDef` requires (`protocol.rs:134-140`), and jcode accepted it.
+- Registered in `~/.jcode/mcp.json` under `mcpServers.ow_createspr`, then
+  `{"action": "reload"}` reported `Connected: 1/1` and listed all 11 tools.
+  So jcode's client consumes a stdlib server's definitions directly, and the
+  SDK question in item 1 is moot for this shape.
+- The naming that actually reaches the model is `mcp__<server>__<tool>`, so the
+  `ow_tools__` prefix proposed in §3 Step 3 is redundant: the server name
+  already namespaces it.
+
+---
+
 ## UNVERIFIED items
 
 1. **Python SDK compatibility**: Whether `fastmcp` or the `mcp` PyPI package
