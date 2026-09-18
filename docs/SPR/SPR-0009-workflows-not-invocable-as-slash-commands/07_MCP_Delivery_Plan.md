@@ -52,11 +52,25 @@ Analysis findings that constrain the design:
   the **session working directory**, not the daemon cwd (issue #420).
 - **Two process scopes**: `shared` servers pool daemon-global; non-shared servers are
   spawned **per-session with the session cwd** as the child process cwd
-  (`connect_in_dir`, `client.rs:180-181`).
+  (`connect_in_dir`, `crates/jcode-base/src/mcp/client.rs:155-181`).
 - **Tools-only primitive**: MCP in jcode supports only `tools/list` and `tools/call`
-  (`protocol.rs:142,148,155`). No `prompts` or `resources` support (verified: 0 matches).
-- **No credentials leak by default**: the child inherits only explicitly-declared
-  `env` (issue #771), so providers must be opted in per-server.
+  (`crates/jcode-base/src/mcp/protocol.rs:142, :148, :155`). No `prompts` or `resources`
+  support (verified: 0 matches).
+- **Credentials are scrubbed by denylist, not allowlist**: the child **inherits the
+  daemon's environment** with a narrow set of sensitive keys removed, then has the
+  per-server declared `env` added on top (`mcp_child_env`,
+  `crates/jcode-base/src/mcp/client.rs:411-418`; `Command::envs` at `:176`, with no
+  `env_clear` on this path). The denylist is
+  `*_API_KEY`, `*_ACCESS_TOKEN`, `*_AUTH_TOKEN`, plus exactly `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AZURE_CLIENT_SECRET`, and
+  `GOOGLE_APPLICATION_CREDENTIALS` (`:396-409`). Anything else passes through:
+  `GITHUB_TOKEN`, `HF_TOKEN`, `SLACK_BOT_TOKEN`, `CLIENT_SECRET`, `PGPASSWORD`, and
+  `DATABASE_URL` are **not** scrubbed. This matters directly here, because the server
+  under design will hold governed-DB write access; treat the inherited environment as
+  untrusted input and have the server read only the config it needs.
+- **No credentials leak by design**: providers are opted in per-server via declared
+  `env`, so a server that needs a provider credential must be given it explicitly.
+  That is a convenience property, not the isolation property the denylist implies.
 - **jcode has no slash-command registry**; MCP itself provides no user-typed `/name`
   surface. Option D (MCP-as-tool) thus **removes** the slash unless a command surface
   (Option A) is built on top.
@@ -101,12 +115,39 @@ Tell the model about many tools efficiently without bloating the prompt:
   spec/args/examples for the single command the model commits to. Mirrors jcode's
   `mcp_search`/`mcp_call` deferred mode and `/skills` one-at-a-time loading.
 
+**Measured against this catalog, Tier 1/Tier 2 is optional, not required.** The
+cost of a tool definition was measured at ~168 tokens (`06_MCP_Server_OW_tools_Steps.md`
+§6: 11 live tools = 1,844 tokens, computed with jcode's own
+`len(json({name, description, input_schema}))/4` formula). At ~24 tools for the
+whole 2-series that is ~4,000 tokens, and even 45 tools stays under the 8,000-token
+threshold at which jcode swaps to the deferred `mcp_search`/`mcp_call` surface.
+Below that threshold, exposing every tool eagerly is cheaper in round-trips than an
+index plus a lookup call, and the lookup result itself enters context anyway. Adopt
+index-then-load only if the catalog grows past roughly 45 tools, or if a workflow
+family outside the 2-series is folded in.
+
+The deferral mechanism itself is real and was confirmed behaviorally: setting
+`mcp_tools_token_threshold = 1` on a running daemon made the next session call
+`mcp_search` then `mcp_call` instead of the direct tool, and restoring 8000 returned
+it to the direct call — same daemon, no restart.
+
 ## 5. Deterministic-vs-judgment boundary
 
 The 2-series (`createSPR2`, `doSPR2`, `checkSPR2`, `closeSPR2`) contains roughly
-**25-28 distinct deterministic executable operations**, concentrated in `create` (~10)
-and `close` (~9 new); `do` adds ~6 (much of it unavoidable fix judgment); `check`
-has ~0 scripted commands (it is a read-and-verify gate).
+**19-24 distinct deterministic executable operations**, concentrated in `create`
+and `close`; `check` has none.
+
+Counts are measured from the workflow files, not estimated. `python3` invocation
+lines: create=12, do=4, check=0, close=8. Distinct `db_write.py` subcommands:
+create={`ow_write_ci`, `query_ci_by_path`, `query_test_execs`, `upsert_praca`,
+`upsert_sc`}, do={`lookup_ci`, `query_ci_by_path`, `upsert_sc`},
+check={}, close={`lookup_ci`, `query_ci_by_path`, `query_closure_readiness`,
+`query_drg_dashboard`, `query_mikado_status`, `tag_ci`}. Add the non-`db_write`
+operations per workflow: create adds `praca_scaffold scaffold-folder`,
+`praca_scaffold backpatch-parent`, `update_author.py`, `check_folder_frontmatter.py`;
+close adds `ow_close_ci` and `deferral_scanner`. Reproduce with
+`grep -o "db_write.py [a-z_]*" .agents/workflows/<wf>.md | awk '{print $2}' | sort -u`
+and `grep -c "python3 " .agents/workflows/<wf>.md`.
 
 ### 5.1 Deterministic (convert to typed MCP tools)
 
@@ -145,16 +186,50 @@ on miscategorizing a step as deterministic when it is judgment (silent corruptio
 Specify the tool surface *before* generation: per-tool `inputSchema` (types, enums,
 ranges), server-computed defaults, and the return shape that replaces grep self-checks.
 Decide coarse-vs-fine tooling and where each workflow's gates/STOP points survive.
-Solely from the model's proven per-run capability — no external input gate is required.
+
+Schemas are **derived from source, not inferred from model capability**: every
+deterministic operation is an existing CLI or function, so its types are already
+written down. `python3 -m OW_tools.<tool> --help` yields the argparse surface, and the
+`ow_actions_*` modules carry real signatures — e.g. `ow_resolve_ci(*, path, title,
+ci_id) -> int | None` (`OW_tools/ow_actions_governance.py:157-170`),
+`ow_register_ci(path) -> OW_TransitionResult`
+(`OW_tools/ow_actions_efsm_compound.py:380`), `ow_callers(tool) -> dict[str, int]`
+(`:197`). Doc 06 §2 does exactly this for seven entry points and records the result.
+A schema that is guessed and only checked at run time is the failure mode the risk
+table is trying to avoid; deriving costs minutes and removes the guess. The review
+gate for this phase is therefore "every field traces to a real signature or `--help`
+line", not "the model believes it can do this".
 
 ### Phase do — implementation (~10% of effort)
 Generate the MCP server from the design; rewrite the markdown into thin procedure
 orchestration that references tools by name. Heavily mechanical once DAR/RFC are locked.
 
+There is already a working precedent for the shape of this output:
+`temp/mcp/ow_createspr/` (doc 06 §8) implements createSPR2 as 11 stdlib-only tools over
+stdio JSON-RPC 2.0, dry-run by default, verified end to end through jcode's own client
+(`Connected: 1/1`) and by a real session calling `mcp__ow_createspr__ow_db_probe`. Reuse
+its conventions — newline-delimited JSON framing (jcode does not use Content-Length,
+`crates/jcode-base/src/mcp/client.rs:54,198`), structured per-step JSON returns, and
+`dry_run` defaulting true on every mutating tool.
+
 ### Phase check/close — verification
-One live `createSPR` run as the smoke test. The first real invocation doubles as
-verification: any latent schema error surfaces here, which is acceptable because the
-workflow is run repeatedly anyway.
+Verification is two-staged, because a schema error in this surface does not fail
+loudly — it writes a wrong `parent`, `domain`, or `severity` into the governed DB and
+looks like success.
+
+1. **Dry-run verification (required before any real run).** Execute every mutating tool
+   with `dry_run: true` against a sandbox target: a `target_dir` outside the Overwatch
+   repo and an explicit `artifact_id` so no governed number is allocated. Confirm
+   created files, planned commands, and that
+   `git -C /home/d/dev_env/clones/Overwatch status --porcelain` is unchanged before and
+   after. Doc 06 §5 does this and it is reproducible in minutes.
+2. **One live `createSPR` run** as the smoke test, with the operator gates answered
+   (`tp_gap_category`, `tp_gap_reference`, `change_class`, `lesson_key`). This is the
+   point at which a latent schema error is allowed to surface, because by then the
+   dry-run pass has already excluded the corrupting cases.
+
+Skipping stage 1 and treating the first real invocation as the test is not acceptable
+for a workflow that writes governed state.
 
 ## 7. Milestones
 
@@ -170,24 +245,31 @@ workflow is run repeatedly anyway.
 | Risk | Mitigation |
 |:-----|:-----------|
 | Miscategorized step (judgment treated as deterministic) | Boundary table is the DAR review artifact; reviewed before generation |
-| Latent wrong schema (correct-looking but wrong at run) | Thin-required/fat-default reduces surface; M4 smoke test catches |
+| Latent wrong schema (correct-looking but wrong at run) | Derive every field from `--help`/signatures at RFC; thin-required/fat-default reduces surface; mandatory dry-run pass before the live run |
 | Losing the slash UX | Option A retained as the surface layer on top of MCP |
 | Opaque tool judgments (traceability loss) | Judgment stays on session model; tools return `evidence` notes |
 | Markdown↔tool drift after text improvements | Generated index + single-source contract; tool layer is canonical for args |
-| Schema done by guessing OW_tools real types | Derive from the model's demonstrated per-run capability; verify at M4 |
+| Schema done by guessing OW_tools real types | Derive from source: `--help` output and `ow_actions_*` signatures, as doc 06 §2 does for seven entry points; verify with the dry-run pass before M4 |
+| Credential leak into the MCP child | jcode scrubs only a narrow denylist (`*_API_KEY`, `*_ACCESS_TOKEN`, `*_AUTH_TOKEN`, five AWS/Azure/GCP names); the child inherits everything else, so the server must not assume its environment is clean |
 
 ## 9. Open questions
 
 - Tool granularity: one tool per phase vs one per command (coarse vs fine). Default:
-  fine per command, grouped by phase prefix.
+  fine per command, grouped by phase prefix. Doc 06 already ran this experiment for
+  createSPR2 and fine per step worked, including the gate-return shape.
 - Placement of the MCP server code (new crate/module vs wrapper around `OW_tools`).
+  The question is narrower than it looks: the working precedent is a standalone stdlib
+  Python server under `temp/mcp/ow_createspr/` (doc 06 §8) that shells out to
+  `OW_tools`. No jcode crate changes were needed, which is the strongest argument for
+  keeping the generated server out of the jcode crates.
 - Whether `check` (the least-scripted stage) should prioritize scripting its semantic
   reconciliation before create/close, given it is the highest-judgment gate today.
 
 ## 10. Verification list (P-series)
 
 - **P-1** — Catalog is exhaustive: every deterministic executable in the 4 v2 workflows
-  appears in the boundary table (create=10, do=6 new, close=9 new, check=0).
+  appears in the boundary table (measured: 12 `python3` lines in create, 4 in do, 0 in
+  check, 8 in close; 5/3/0/6 distinct `db_write` subcommands respectively).
 - **P-2** — Boundary correctness: each entry is classified deterministic or judgment
   with a code/evidence reference.
 - **P-3** — Schema principle applied: required fields are only the few genuinely-decided
@@ -195,8 +277,11 @@ workflow is run repeatedly anyway.
 - **P-4** — Traceability: judgment steps remain on the session model; no self-inferring
   tool is introduced for judgment.
 - **P-5** — Index-then-load: Tier-1 index is small; full detail loads only on demand.
-- **P-6** — M4 smoke-test passes: a `createSPR` runs end-to-end through the generated
-  surface with correct results.
+  Not required below ~45 tools; if skipped, record that the eager surface was measured
+  under the 8,000-token threshold.
+- **P-6** — M4 smoke-test passes: every mutating tool is first exercised with
+  `dry_run: true` against a sandbox target with the Overwatch tree unchanged, then a
+  `createSPR` runs end-to-end through the generated surface with correct results.
 
 **END.** This is a plan, not the implementation; it changes no code in `crates/`, `src/`,
 `temp/`, `~/.jcode`, or the Overwatch workflow files.

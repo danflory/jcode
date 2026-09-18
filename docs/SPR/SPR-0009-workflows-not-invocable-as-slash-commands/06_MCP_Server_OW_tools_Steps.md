@@ -332,10 +332,12 @@ Per the resolution order (`crates/jcode-base/src/mcp/protocol.rs:577-582`: `.jco
   `initialize`; absent means 30s
   (`crates/jcode-base/src/mcp/protocol.rs:225-230`). Governed DB calls can exceed
   30s, so raise it.
-- `"shared": false` — the server maintains DB connections and cwd-dependent
-  state, so it must not be shared across sessions
-  (`crates/jcode-base/src/mcp/protocol.rs:199-203`: `shared` defaults to `true` for stateless API wrappers;
-  stateful servers should not be shared).
+- `"shared": false` — **conditional on the server holding per-session state.** A
+  generated server that keeps live DB connections or cwd-dependent state must not be
+  shared (`crates/jcode-base/src/mcp/protocol.rs:199-203`: `shared` defaults to `true`
+  for stateless API wrappers). The server actually built in §8 is stateless — every
+  call shells out with an explicit `OW_REPO_ROOT` and cwd — so it is registered
+  globally with `shared: true`, and that is not a contradiction of this bullet.
 - `command: "python3"` — stdio transport per `crates/jcode-base/src/mcp/protocol.rs:192-207`.
 - The env var `OW_TOOLS_SHA256` is the hash-pinned pointer; `OW_TOOLS_PROJECT_ROOT`
   informs the server which project it serves.
