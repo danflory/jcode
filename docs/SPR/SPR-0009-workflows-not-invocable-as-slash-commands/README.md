@@ -40,10 +40,23 @@ executed as a procedure. The proposed fix is a decision, not a survey.
 | `11_Overwatch_Backup.md` | Research | Backup intent vs observed state: the in-guest 49 GB `backups/` directory, the host HDD mount that already exists, and the migration risks |
 | `12_Sandbox_Listeners.md` | Research | The erroneous postgres (installed in error, to be deleted) and the four wildcard binds, with a rule for when a wildcard bind is justified and the measured boundary check |
 
-**Placement note (operator declaration).** Documents 10 and 11 are topically outside
+**Placement note (operator declaration).** Documents 10, 11 and 12 are topically outside
 SPR-0009. They are recorded in this folder as research by explicit operator decision,
 on the understanding that they migrate to Overwatch later. The inconsistency is
 intentional, not a folder-convention error.
+
+## Status
+
+- **Created**: 2026-09-17
+- **Status**: DRAFT. Documents 01-12 are written; the createSPR2 MCP server described
+  in `06_MCP_Server_OW_tools_Steps.md` §8 exists and is verified; the security posture
+  is treated in `09_Security_Model.md`. No code in `crates/` or `src/` was changed.
+- **Anchor**: `SPR-0009.md`
+- **Severity**: Major
+- **Branch**: `sessionCorruption` (created from `dev`)
+- **Where to resume**: the *Open decisions and operator actions* table below, then the
+  *Migration readiness* section, then `09_Security_Model.md` if the security posture is
+  the thread being picked up.
 
 ## Open decisions and operator actions
 
@@ -55,11 +68,11 @@ without an operator decision.
 |:--|:-----|:-----|:-------|:------|
 | 1 | Is firecontrol **one governed record or one per VM**? | Decision | If a VM per entitlement becomes the unit, those VMs must be clients of a central DB or multiplying the VM multiplies the governed truth. | `10_Clone_Isolation.md` §3.5 |
 | 2 | **Delete the erroneous postgres** (`postgresql@16-main`, `0.0.0.0:5432`) | Action | Operator ruling: installed in error; the expected DB is the `firecontrol-db` pod at 51728. No application data, no connections. Procedure and post-deletion verification written out; not yet executed. | `12_Sandbox_Listeners.md` §2 |
-| 7 | **Report two upstream defects in DAR-OW-096** | Action | All 30 frontmatter ids were verified against the governed DB by path: 29 match. (a) `02_Research/19_Memory_Budget_Multi_Instance_7_per_Dev.md` claims `id: 52110`, but `query_ci_by_id --ci-id 52110` returns no rows at all — the document is unregistered and the id does not exist. (b) id `14925` is claimed by two files, the DAR synthesis and `SPR-256_sc_verifier_.../02_TP_Change_Report.md`; the DB registers 14925 at the DAR synthesis path with `doc_type: SPR.TP_CHANGE`, `status: CLOSED`, `parent_ci: 14922`, while the synthesis file's body is the DAR synthesis — so its frontmatter was clobbered by SPR-256's TP frontmatter. | sweep in `query_ci_by_path` + `query_ci_by_id` |
-| 6 | Adopt a default-deny inbound policy and re-judge each wildcard bind (`22`, `6443`, `10250`) | Action | No wildcard bind on this single-node guest passes the two-condition test, and `-P INPUT ACCEPT` with `ufw` inactive means nothing filters. | `12_Sandbox_Listeners.md` §5-§8 |
 | 3 | Migrate the 49 GB `backups/` to `/mnt/vm-backups` and leave a symlink | Action | Move, verify, then link. Takes the guest from 31 GB to roughly 80 GB free. Offered; not performed. | `11_Overwatch_Backup.md` §4 |
-| 4 | Define read scope / answer the credentials question | Decision | Credentials is an operator-declared stub that must be developed. The model-API egress channel cannot be closed by network policy and is the open security question. | `09_Security_Model.md` §6, §4.1 |
+| 4 | Define read scope / answer the credentials question | Decision | Credentials is an operator-declared stub that must be developed. Credentials is an operator-declared stub. The model API is the required egress channel, not the only possible one: outbound traffic is unfiltered, so read scope and egress policy are the open questions. | `09_Security_Model.md` §6, §4.1 |
 | 5 | Pick one drift mechanism (hash pinning vs generated index) | Decision | 06 proposes hash pinning and never built it; 07 specifies a generated index with no hash. | `08_Comparison_06_vs_07.md` §2a |
+| 6 | Adopt a default-deny inbound policy and re-judge each wildcard bind (`22`, `6443`, `10250`) | Action | No wildcard bind on this single-node guest passes the two-condition test, and `-P INPUT ACCEPT` with `ufw` inactive means nothing filters. | `12_Sandbox_Listeners.md` §5-§8 |
+| 7 | **Report two upstream defects in DAR-OW-096** | Action | All 30 frontmatter ids were verified against the governed DB by path: 29 match. (a) `02_Research/19_Memory_Budget_Multi_Instance_7_per_Dev.md` claims `id: 52110`, but `query_ci_by_id --ci-id 52110` returns no rows at all — the document is unregistered and the id does not exist. (b) id `14925` is claimed by two files, the DAR synthesis and `SPR-256_sc_verifier_.../02_TP_Change_Report.md`; the DB registers 14925 at the DAR synthesis path with `doc_type: SPR.TP_CHANGE`, `status: CLOSED`, `parent_ci: 14922`, while the synthesis file's body is the DAR synthesis — so its frontmatter was clobbered by SPR-256's TP frontmatter. | sweep in `query_ci_by_path` + `query_ci_by_id` |
 
 ## Migration readiness (measured with Overwatch's own validator)
 
@@ -109,19 +122,6 @@ Invocation note: `naming_quality.py` and `check_id_uniqueness.py` both fail when
 `python3 OW_tools/<tool>.py` because the repo root is not on `sys.path`. `naming_quality`
 works via `-m`; `check_id_uniqueness` does not work either way.
 
-## Status
-
-- **Created**: 2026-09-17
-- **Status**: DRAFT. Documents 01-12 are written; the createSPR2 MCP server described
-  in `06_MCP_Server_OW_tools_Steps.md` §8 exists and is verified; the security posture
-  is treated in `09_Security_Model.md`. No code in `crates/` or `src/` was changed.
-- **Anchor**: `SPR-0009.md`
-- **Severity**: Major
-- **Branch**: `sessionCorruption` (created from `dev`)
-- **Where to resume**: the *Open decisions and operator actions* table above, then the
-  *Migration readiness* section, then `09_Security_Model.md` if the security posture is
-  the thread being picked up.
-
 ## Folder Convention
 
 Each SPR lives in its own folder under `docs/SPR/SPR-NNNN-<slug>/`. Numbering is
@@ -130,4 +130,5 @@ Frontmatter follows the jcode-local convention established by
 `docs/SPR/SPR-0008-sessionCorruption/`: `id`, `title`, `status`, `author`,
 `created`, `domain`, `severity`, `type`, `version`. No fabricated UDRS ids,
 `ci_impacted`, or numeric `parent` ids are used. This folder is documentation
-only; it makes no code changes.
+only and makes no code changes inside itself; the implementation it describes
+lives at `temp/mcp/ow_createspr/`, per `06_MCP_Server_OW_tools_Steps.md` §8.
