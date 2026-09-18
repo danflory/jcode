@@ -152,7 +152,7 @@ absence of listeners in the guest. Measured on 2026-09-18:
 | Bind | Owner | Note |
 |:-----|:------|:-----|
 | `0.0.0.0:22` | sshd | how the operator reaches the guest |
-| `0.0.0.0:5432` | system postgres 16 (`/usr/lib/postgresql/16/bin/postgres -D /var/lib/postgresql/16/main`, `listen_addresses = '*'`) | **not the governed DB** — a second database on a wildcard address with no documented role here |
+| `0.0.0.0:5432` | system postgres 16 (`/usr/lib/postgresql/16/bin/postgres -D /var/lib/postgresql/16/main`, `listen_addresses = '*'`) | **not the governed DB** — see §5.2 |
 | `*:6443` | k3s API server | wildcard |
 | `*:10250` | kubelet | wildcard |
 | `127.0.0.1:51728` | k3s hostport → `firecontrol-db` pod | the governed DB |
@@ -163,11 +163,33 @@ absence of listeners in the guest. Measured on 2026-09-18:
 jcode itself binds nothing: `ss -ltnp | grep jcode` is empty, and the daemon socket
 is a filesystem-scoped unix socket (§7).
 
-Two consequences. First, the four wildcard binds mean the internal-only claim rests
-entirely on the VM's network boundary, not on the guest's own configuration. Second,
-the second postgres on `0.0.0.0:5432` is not the governed database and has no
-documented purpose in this posture; it should be explained or removed before the
-posture is described as closed.
+The four wildcard binds mean the internal-only claim rests entirely on the VM's
+network boundary, not on the guest's own configuration.
+
+### 5.2 The second postgres, resolved
+
+The `0.0.0.0:5432` listener is not a stray service and not the governed DB. Measured:
+
+| Property | Value |
+|:---------|:------|
+| Service | `postgresql@16-main`, **active**, `UnitFileState=enabled-runtime` (started at runtime; will not return on boot) |
+| Started | 2026-09-15 18:00:34 UTC, i.e. sandbox provisioning |
+| Data directory | `/var/lib/postgresql/16/main` (host instance, distinct from the pod) |
+| Roles | **42**, including the full Overwatch set: `overwatch_agent`, `ow_agent`, `ow_admin`, `ow_full_dml`, `ow_daemon`, `ow_entropy`, `ow_sproc_owner`, `ow_tester`, `ow_test_runner`, `ow_telemetry_purge`, `d2_supervisor`, and a `d` role |
+| Databases | `postgres`, `template0`, `template1` only, ~7.5 MB each — **no application schema, no governed data** |
+| Live connections | none observed |
+| Auth | TCP requires a password (no trust); local socket resolves peer auth via the `d` role, which is why `psql -l` works as `d` |
+
+So the host instance holds a **provisioned role registry with no databases**: the role
+bootstrap ran against it, but the governed schema was never created there because the
+governed DB is the `firecontrol-db` pod behind 51728. The separate pod-side postgres
+processes (`pid 276429` and workers) confirm these are two independent instances.
+
+Two actions follow, neither of which changes the MCP posture: narrow this bind to
+`127.0.0.1` since nothing outside the guest has business reaching it, and decide
+whether the role registry is intended — the presence of a `d2_supervisor` role
+suggests a planned second-supervisor or second-sandbox concept rather than pure
+leftover.
 
 ## 6. Credentials — STUB, MUST BE DEVELOPED
 
