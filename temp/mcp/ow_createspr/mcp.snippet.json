@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "ow_createspr": {
+      "command": "python3",
+      "args": [
+        "/home/d/dev_env/jcode/temp/mcp/ow_createspr/server.py"
+      ],
+      "env": {
+        "OW_REPO_ROOT": "/home/d/dev_env/clones/Overwatch"
+      },
+      "timeout_secs": 120,
+      "shared": true
+    }
+  }
+}
