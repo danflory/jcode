@@ -38,6 +38,7 @@ executed as a procedure. The proposed fix is a decision, not a survey.
 | `09_Security_Model.md` | Security | Full security treatment: internal-only network posture, single trust domain, capability and read scope, provenance, measured containment state, and the credentials stub |
 | `10_Clone_Isolation.md` | Research | Running parallel feature work without cross-talk: per-clone home vs per-user isolation, with measured costs and the two footguns |
 | `11_Overwatch_Backup.md` | Research | Backup intent vs observed state: the in-guest 49 GB `backups/` directory, the host HDD mount that already exists, and the migration risks |
+| `12_Sandbox_Listeners.md` | Research | The erroneous postgres (installed in error, to be deleted) and the four wildcard binds, with a rule for when a wildcard bind is justified and the measured boundary check |
 
 **Placement note (operator declaration).** Documents 10 and 11 are topically outside
 SPR-0009. They are recorded in this folder as research by explicit operator decision,
@@ -53,7 +54,8 @@ without an operator decision.
 | # | Item | Type | Detail | Where |
 |:--|:-----|:-----|:-------|:------|
 | 1 | Is firecontrol **one governed record or one per VM**? | Decision | If a VM per entitlement becomes the unit, those VMs must be clients of a central DB or multiplying the VM multiplies the governed truth. | `10_Clone_Isolation.md` §3.5 |
-| 2 | Narrow the pre-cutover postgres bind `0.0.0.0:5432` → `127.0.0.1` | Action | The instance is the pre-container local DB: designed RBAC registry, no governed schema, no live connections. `enabled-runtime`, so it will not return after reboot either way. | `09_Security_Model.md` §5.2 |
+| 2 | **Delete the erroneous postgres** (`postgresql@16-main`, `0.0.0.0:5432`) | Action | Operator ruling: installed in error; the expected DB is the `firecontrol-db` pod at 51728. No application data, no connections. Procedure and post-deletion verification written out; not yet executed. | `12_Sandbox_Listeners.md` §2 |
+| 6 | Adopt a default-deny inbound policy and re-judge each wildcard bind (`22`, `6443`, `10250`) | Action | No wildcard bind on this single-node guest passes the two-condition test, and `-P INPUT ACCEPT` with `ufw` inactive means nothing filters. | `12_Sandbox_Listeners.md` §5-§8 |
 | 3 | Migrate the 49 GB `backups/` to `/mnt/vm-backups` and leave a symlink | Action | Move, verify, then link. Takes the guest from 31 GB to roughly 80 GB free. Offered; not performed. | `11_Overwatch_Backup.md` §4 |
 | 4 | Define read scope / answer the credentials question | Decision | Credentials is an operator-declared stub that must be developed. The model-API egress channel cannot be closed by network policy and is the open security question. | `09_Security_Model.md` §6, §4.1 |
 | 5 | Pick one drift mechanism (hash pinning vs generated index) | Decision | 06 proposes hash pinning and never built it; 07 specifies a generated index with no hash. | `08_Comparison_06_vs_07.md` §2a |
