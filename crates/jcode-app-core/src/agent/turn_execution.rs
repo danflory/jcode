@@ -687,8 +687,24 @@ impl Agent {
         let load_start = Instant::now();
         let mut session = Session::load(session_id)?;
         if let Some(working_dir) = working_dir {
-            session.working_dir = Some(working_dir.to_string());
-            session.refresh_initial_session_context_message();
+            // The target session's own stored working_dir is authoritative on
+            // resume; a caller-supplied working_dir is advisory only. It is
+            // applied only when the session has no usable stored directory
+            // (None or empty), preserving the path a client can pass for a
+            // session that genuinely has no cwd yet. We never rewrite a
+            // differing existing cwd. Without this, a client launched in a
+            // sibling clone (e.g. /workspace/Overwatch vs
+            // /workspace/Overwatch_2) would silently move the resumed session
+            // to the wrong repository (SPR-0008 symptom A).
+            let has_stored_dir = session
+                .working_dir
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|dir| !dir.is_empty());
+            if !has_stored_dir {
+                session.working_dir = Some(working_dir.to_string());
+                session.refresh_initial_session_context_message();
+            }
         }
         let load_ms = load_start.elapsed().as_millis();
         logging::info(&format!(

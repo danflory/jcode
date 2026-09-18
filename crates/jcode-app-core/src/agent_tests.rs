@@ -1190,6 +1190,61 @@ async fn restore_session_rehydrates_injected_memory_ids() {
 }
 
 #[tokio::test]
+async fn resume_supplied_cwd_does_not_clobber_stored_working_dir() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+
+    // Target session pinned to a real cwd: a sibling clone of the directory the
+    // client happens to be launched in (SPR-0008 symptom A).
+    let stored_dir = "/workspace/Overwatch";
+    let mut restored_session = crate::session::Session::create_with_id(
+        "session_resume_stored_cwd_wins".to_string(),
+        None,
+        None,
+    );
+    restored_session.working_dir = Some(stored_dir.into());
+    // save_forced: a fresh empty session is otherwise skipped by save()'s
+    // persistence gate and would be unloadable here (pre-existing #restore-fail).
+    restored_session.save_forced().expect("save restored session");
+
+    // A resuming client reports a *different* sibling clone cwd.
+    let reported_dir = "/workspace/Overwatch_2";
+    agent
+        .restore_session_with_working_dir(&restored_session.id, Some(reported_dir))
+        .expect("restore session should succeed");
+
+    // The target session's OWN stored cwd is authoritative; the reported one
+    // must not silently rewrite where the session works.
+    assert_eq!(agent.working_dir(), Some(stored_dir));
+}
+
+#[tokio::test]
+async fn resume_supplied_cwd_applies_when_session_has_no_stored_dir() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+
+    // A session that genuinely has no cwd yet may still take the reported cwd.
+    let mut restored_session = crate::session::Session::create_with_id(
+        "session_resume_no_stored_cwd".to_string(),
+        None,
+        None,
+    );
+    restored_session.working_dir = None;
+    restored_session.save_forced().expect("save restored session");
+
+    let reported_dir = "/workspace/Overwatch_2";
+    agent
+        .restore_session_with_working_dir(&restored_session.id, Some(reported_dir))
+        .expect("restore session should succeed");
+
+    assert_eq!(agent.working_dir(), Some(reported_dir));
+}
+
+#[tokio::test]
 async fn build_memory_prompt_nonblocking_defers_pending_memory_during_tool_loop() {
     let _guard = crate::storage::lock_test_env();
     crate::memory::clear_all_pending_memory();
