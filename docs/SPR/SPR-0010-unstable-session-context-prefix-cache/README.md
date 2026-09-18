@@ -28,7 +28,7 @@ version: "2026-09-18"
 ## Status
 
 - **Created**: 2026-09-18
-- **Status**: CONFIRMED (observability implemented and verified; fix specified, not applied)
+- **Status**: FIXED (fix + observability implemented and verified; V-4 re-measurement outstanding)
 - **Anchor**: `SPR-0010.md`
 - **Severity**: Major
 - **Branch**: `dev`
